@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProcessFlow</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">P</div>
+        <div>
+          <strong>ProcessFlow</strong>
+          <span>Gestão inteligente</span>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <span class="side-label">NAVEGAÇÃO</span>
+        <button class="nav-item active" data-page="dashboard">⌂ <span>Visão geral</span></button>
+        <button class="nav-item" data-page="processos">▣ <span>Processos</span></button>
+        <button class="nav-item" data-page="atencao">⚠ <span>Atenção</span><b id="sideAttention">0</b></button>
+        <button class="nav-item" data-page="financeiro">R$ <span>Financeiro</span><b id="sideFinanceAlert">0</b></button>
+      </div>
+
+      <div class="side-section">
+        <span class="side-label">FERRAMENTAS</span>
+        <button class="nav-item" id="importTrelloBtn">⇩ <span>Importar Trello</span></button>
+        <button class="nav-item" id="backupBtn">◫ <span>Fazer backup</span></button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="offline-dot"></div>
+        <div>
+          <strong>Modo offline</strong>
+          <span>Dados armazenados localmente</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow" id="pageEyebrow">PROCESSFLOW</span>
+          <h1 id="pageTitle">Visão geral</h1>
+        </div>
+        <div class="top-actions">
+          <button class="ghost-btn" id="refreshBtn">↻ Atualizar</button>
+          <button class="primary-btn" id="newProcessBtn">＋ Novo processo</button>
+        </div>
+      </header>
+
+      <section class="page" id="dashboardPage">
+        <div class="hero">
+          <div>
+            <span class="eyebrow">PAINEL OPERACIONAL</span>
+            <h2>Acompanhe tudo em um só lugar.</h2>
+            <p>Prazos, processos, prioridades e pendências organizados para consulta rápida.</p>
+          </div>
+          <div class="hero-date" id="todayLabel"></div>
+        </div>
+
+        <div class="metrics" id="metrics"></div>
+
+        <div class="dashboard-grid">
+          <section class="panel attention-panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">ATENÇÃO</span>
+                <h3>Prazos que merecem atenção</h3>
+              </div>
+              <button class="text-btn" id="seeAttentionBtn">Ver todos →</button>
+            </div>
+            <div id="attentionList" class="attention-list"></div>
+          </section>
+
+          <section class="panel distribution-panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">DISTRIBUIÇÃO</span>
+                <h3>Status dos processos</h3>
+              </div>
+            </div>
+            <div class="donut-wrap">
+              <div class="donut" id="donut"><div><strong id="donutTotal">0</strong><span>processos</span></div></div>
+              <div class="legend" id="legend"></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel recent-panel">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">ATIVIDADE</span>
+              <h3>Processos recentes</h3>
+            </div>
+            <button class="text-btn" data-page-target="processos">Abrir processos →</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Processo</th><th>Prazo</th><th>Prioridade</th><th>Status</th></tr>
+              </thead>
+              <tbody id="recentTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="page hidden" id="processosPage">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">GESTÃO</span>
+            <h2>Processos</h2>
+            <p>Pesquise, filtre e acompanhe os processos cadastrados.</p>
+          </div>
+          <button class="primary-btn" id="newProcessBtn2">＋ Novo processo</button>
+        </div>
+
+        <div class="toolbar">
+          <div class="search-box">⌕ <input id="searchInput" placeholder="Buscar por cliente, número ou tipo..."></div>
+          <div class="filter-chips" id="filterChips">
+            <button class="chip active" data-filter="Todos">Todos</button>
+            <button class="chip" data-filter="Atrasados">Atrasados</button>
+            <button class="chip" data-filter="Urgentes">Urgentes</button>
+            <button class="chip" data-filter="Atenção">Atenção</button>
+            <button class="chip" data-filter="Em andamento">Andamento</button>
+            <button class="chip" data-filter="Sobrestado">Sobrestados</button>
+            <button class="chip" data-filter="Concluído">Concluídos</button>
+          </div>
+        </div>
+
+        <section class="panel">
+          <div class="table-wrap">
+            <table class="process-table">
+              <thead>
+                <tr><th>Cliente / Processo</th><th>Prazo</th><th>Próxima ação</th><th>Prioridade</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="processTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="page hidden" id="atencaoPage">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">PENDÊNCIAS</span>
+            <h2>Atenção</h2>
+            <p>Processos atrasados ou próximos do prazo.</p>
+          </div>
+        </div>
+        <div class="attention-full" id="attentionFull"></div>
+      </section>
+
+      <section class="page hidden" id="financeiroPage">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">FINANCEIRO</span>
+            <h2>Financeiro</h2>
+            <p>Receitas, despesas, parcelas e valores ainda a receber.</p>
+          </div>
+          <button class="primary-btn" id="newFinanceBtn">＋ Nova movimentação</button>
+        </div>
+
+        <div class="finance-toolbar">
+          <label>Mês
+            <select id="financeMonth">
+              <option value="all">Todos</option>
+              <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+              <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+              <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+              <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+            </select>
+          </label>
+          <label>Ano
+            <select id="financeYear"></select>
+          </label>
+          <button class="ghost-btn" id="financeCurrentBtn">Mês atual</button>
+        </div>
+
+        <div class="metrics finance-metrics" id="financeMetrics"></div>
+
+        <section class="finance-summary-panel panel">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">LEVANTAMENTO</span>
+              <h3>Quanto entrou e saiu</h3>
+            </div>
+            <div class="summary-period" id="summaryPeriod"></div>
+          </div>
+          <div class="summary-grid" id="financeSummaryGrid"></div>
+        </section>
+
+        <div class="finance-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">RECEBIMENTOS</span><h3>Próximas parcelas</h3></div>
+            </div>
+            <div class="installment-list" id="upcomingInstallments"></div>
+          </section>
+
+          <section class="panel overdue-panel">
+            <div class="panel-head overdue-head">
+              <div><span class="eyebrow">ALERTAS</span><h3>Parcelas atrasadas</h3></div>
+              <div class="overdue-counter" id="overdueCounter">0 atrasadas</div>
+            </div>
+            <div class="installment-list" id="overdueInstallments"></div>
+          </section>
+        </div>
+
+        <div class="finance-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">EVOLUÇÃO</span><h3>Receitas x despesas</h3></div>
+            </div>
+            <div class="finance-chart" id="financeChart"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div><span class="eyebrow">RESUMO</span><h3>Por categoria</h3></div>
+            </div>
+            <div class="category-list" id="categoryList"></div>
+          </section>
+        </div>
+
+        <section class="panel recent-panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">MOVIMENTAÇÕES</span><h3>Histórico financeiro</h3></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th></th></tr></thead>
+              <tbody id="financeTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="processModal">
+    <div class="modal-card large">
+      <div class="modal-head"><div><span class="eyebrow">PROCESSO</span><h2 id="formTitle">Novo processo</h2></div><button class="close-btn" id="closeProcessModal">×</button></div>
+      <form id="processForm">
+        <div class="form-grid">
+          <label>Cliente / parte<input id="fCliente" required></label>
+          <label>Número do processo<input id="fNumero"></label>
+          <label>Tipo<input id="fTipo"></label>
+          <label>Data do prazo<input id="fPrazo" type="date"></label>
+          <label>Próxima ação<input id="fAcao"></label>
+          <label>Prioridade<select id="fPrioridade"><option>Normal</option><option>Baixa</option><option>Alta</option><option>Urgente</option></select></label>
+          <label>Status<select id="fStatus"><option>Em andamento</option><option>Atenção</option><option>Sobrestado</option><option>Concluído</option></select></label>
+          <label class="full">Observações<textarea id="fObs" rows="5"></textarea></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="ghost-btn" id="cancelProcess">Cancelar</button><button class="primary-btn">Salvar processo</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="financeModal">
+    <div class="modal-card large">
+      <div class="modal-head"><div><span class="eyebrow">FINANCEIRO</span><h2 id="financeFormTitle">Nova movimentação</h2></div><button class="close-btn" id="closeFinanceModal">×</button></div>
+      <form id="financeForm">
+        <div class="form-grid">
+          <label>Tipo
+            <select id="finTipo"><option value="receita">Receita</option><option value="despesa">Despesa</option></select>
+          </label>
+          <label>Data<input id="finData" type="date" required></label>
+          <label class="full">Descrição<input id="finDescricao" required placeholder="Ex.: Honorários / aluguel / material"></label>
+          <label>Categoria
+            <select id="finCategoria">
+              <option>Honorários</option><option>Serviço</option><option>Salário</option><option>Outros recebimentos</option>
+              <option>Alimentação</option><option>Transporte</option><option>Moradia</option><option>Contas</option><option>Impostos</option><option>Outras despesas</option>
+            </select>
+          </label>
+          <label>Valor<input id="finValor" type="number" min="0" step="0.01" required placeholder="0,00"></label>
+          <div class="full installment-toggle">
+            <label class="check-row"><input type="checkbox" id="finParcelado"> É um recebimento parcelado</label>
+          </div>
+          <div class="installment-fields full hidden" id="installmentFields">
+            <label>Quantidade de parcelas<input id="finQtdParcelas" type="number" min="2" max="120" value="2"></label>
+            <label>Periodicidade<select id="finPeriodicidade"><option value="mensal">Mensal</option><option value="quinzenal">Quinzenal</option><option value="semanal">Semanal</option></select></label>
+            <label>Primeira parcela<input id="finPrimeiraParcela" type="date"></label>
+            <label>Parcela inicial já recebida?<select id="finPrimeiraRecebida"><option value="sim">Sim</option><option value="nao">Não</option></select></label>
+          </div>
+          <div class="parcel-preview full" id="parcelPreview"></div>
+          <label class="full">Observações<textarea id="finObs" rows="3"></textarea></label>
+        </div>
+        <div class="modal-actions"><button type="button" class="ghost-btn" id="cancelFinance">Cancelar</button><button class="primary-btn">Salvar movimentação</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="detailModal">
+    <div class="modal-card">
+      <div class="modal-head"><div><span class="eyebrow">DETALHES</span><h2 id="detailTitle">Processo</h2></div><button class="close-btn" id="closeDetailModal">×</button></div>
+      <div id="detailContent"></div>
+      <div class="modal-actions"><button class="danger-btn" id="detailDelete">Excluir</button><button class="ghost-btn" id="detailEdit">Editar</button><button class="primary-btn" id="detailToggle">Concluir</button></div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="financeDetailModal">
+    <div class="modal-card large">
+      <div class="modal-head"><div><span class="eyebrow">RECEBIMENTO</span><h2 id="financeDetailTitle"></h2></div><button class="close-btn" id="closeFinanceDetail">×</button></div>
+      <div id="financeDetailContent"></div>
+      <div class="modal-actions"><button class="danger-btn" id="financeDelete">Excluir</button><button class="ghost-btn" id="financeEdit">Editar</button></div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

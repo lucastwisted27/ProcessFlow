@@ -1,0 +1,13 @@
+{
+  "name": "processflow-electron",
+  "version": "1.0.0",
+  "description": "Gestão de processos e financeiro offline",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^38.2.0"
+  }
+}

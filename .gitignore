@@ -1,0 +1,28 @@
+node_modules/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+dist/
+.vite/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.db
+*.sqlite3
+.coverage
+htmlcov/
+*.egg-info/
+*.tsbuildinfo
+
+# Dados reais/legados: nunca publicar no GitHub.
+/processos.json
+/financeiro.json
+/trello_export_original.json
+/y8LgM8Uc - carlos-andrade-advocacia.json
+/ProcessFlow_Backup_*.json
