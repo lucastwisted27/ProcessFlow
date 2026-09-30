@@ -31,12 +31,12 @@ Os arquivos Electron da raiz permanecem apenas como referência e fonte de dados
 Os dados não pertencem isoladamente à conta que os criou. Processos, anexos, finanças e parcelas pertencem a um `workspace`:
 
 1. Carlos cria a conta e o espaço do escritório.
-2. Carlos usa **Convidar pessoa** e gera um código válido por 48 horas e uma única utilização.
-3. A esposa cria a própria conta.
-4. No primeiro acesso, ela informa o código em **Entrar no espaço**.
-5. Os dois passam a acessar o mesmo conjunto de processos e finanças.
+2. A esposa cria a própria conta.
+3. As duas contas são vinculadas uma única vez ao workspace do escritório.
+4. Depois do login, cada pessoa escolhe **Escritório Carlos** na tela **Onde você quer entrar?**.
+5. A opção **Novo ambiente** cria um espaço separado quando isso for necessário.
 
-Cada requisição da API valida o token do usuário e sua associação ao workspace informado. Compartilhar uma senha não é necessário nem recomendado.
+Cada requisição da API valida o token do usuário e sua associação ao workspace informado. Ambientes não autorizados não aparecem na seleção. Compartilhar uma senha não é necessário nem recomendado.
 
 ## Estrutura
 

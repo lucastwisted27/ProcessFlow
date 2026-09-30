@@ -298,28 +298,6 @@ function ProcessDetailModal({
   );
 }
 
-interface InviteModalProps {
-  workspace: Workspace;
-  token: string;
-  busy: boolean;
-  onGenerate: () => Promise<void>;
-  onClose: () => void;
-}
-
-function InviteModal({ workspace, token, busy, onGenerate, onClose }: InviteModalProps) {
-  return (
-    <div className="modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="modal-card compact" role="dialog" aria-modal="true" aria-labelledby="invite-title">
-        <header className="modal-head"><div><p className="eyebrow">ACESSO COMPARTILHADO</p><h2 id="invite-title">Convidar para {workspace.name}</h2></div><button className="icon-button" onClick={onClose} aria-label="Fechar">×</button></header>
-        <div className="invite-body">
-          <p>Gere um código e envie por um canal seguro. Ele vale por 48 horas e só pode ser usado uma vez.</p>
-          {token ? <><label>Código do convite<textarea readOnly rows={3} value={token} onFocus={(event) => event.target.select()} /></label><button className="ghost-btn" onClick={() => void navigator.clipboard.writeText(token)}>Copiar código</button></> : <button className="primary-btn" disabled={busy} onClick={() => void onGenerate()}>{busy ? "Gerando…" : "Gerar convite"}</button>}
-        </div>
-      </section>
-    </div>
-  );
-}
-
 interface FinancePageProps {
   accessToken: string;
   workspaceId: string;
@@ -461,7 +439,9 @@ function WorkspaceApp({ session }: { session: Session }) {
   const [activePage, setActivePage] = useState<"dashboard" | "processes" | "finance" | "data">("dashboard");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem("processflow.workspace") ?? "");
-  const [workspaceName, setWorkspaceName] = useState("Escritório Carlos");
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaceChooserOpen, setWorkspaceChooserOpen] = useState(true);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [processes, setProcesses] = useState<ProcessRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -472,9 +452,6 @@ function WorkspaceApp({ session }: { session: Session }) {
   const [showNew, setShowNew] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<ProcessRecord | null>(null);
   const [processActionError, setProcessActionError] = useState("");
-  const [showInvite, setShowInvite] = useState(false);
-  const [inviteToken, setInviteToken] = useState("");
-  const [joinToken, setJoinToken] = useState("");
   const [saving, setSaving] = useState(false);
 
   const token = session.access_token;
@@ -485,19 +462,21 @@ function WorkspaceApp({ session }: { session: Session }) {
     try {
       const data = await apiRequest<Workspace[]>("/api/v1/workspaces", { method: "GET", accessToken: token });
       setWorkspaces(data);
-      const selected = data.some((item) => item.id === workspaceId) ? workspaceId : data[0]?.id ?? "";
-      setWorkspaceId(selected);
-      if (selected) localStorage.setItem("processflow.workspace", selected);
+      const storedWorkspace = localStorage.getItem("processflow.workspace") ?? "";
+      if (!data.some((item) => item.id === storedWorkspace)) {
+        setWorkspaceId("");
+        localStorage.removeItem("processflow.workspace");
+      }
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível carregar os espaços.");
     } finally {
       setLoading(false);
     }
-  }, [token, workspaceId]);
+  }, [token]);
 
   const loadProcesses = useCallback(async () => {
-    if (!workspaceId) return;
+    if (workspaceChooserOpen || !workspaceId) return;
     setLoading(true);
     const params = new URLSearchParams({ limit: "200" });
     if (query.trim()) params.set("q", query.trim());
@@ -517,7 +496,7 @@ function WorkspaceApp({ session }: { session: Session }) {
     } finally {
       setLoading(false);
     }
-  }, [attentionOnly, query, statusFilter, token, workspaceId]);
+  }, [attentionOnly, query, statusFilter, token, workspaceChooserOpen, workspaceId]);
 
   useEffect(() => { void loadWorkspaces(); }, [loadWorkspaces]);
   useEffect(() => {
@@ -527,55 +506,33 @@ function WorkspaceApp({ session }: { session: Session }) {
 
   async function createWorkspace(event: FormEvent) {
     event.preventDefault();
+    setSaving(true);
     try {
       const created = await apiRequest<Workspace>("/api/v1/workspaces", {
         method: "POST",
         accessToken: token,
         body: JSON.stringify({ name: workspaceName }),
       });
-      setWorkspaces([created]);
+      setWorkspaces((current) => [...current, created]);
       setWorkspaceId(created.id);
       localStorage.setItem("processflow.workspace", created.id);
+      setWorkspaceChooserOpen(false);
+      setCreatingWorkspace(false);
+      setWorkspaceName("");
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível criar o espaço.");
-    }
-  }
-
-  async function acceptInvitation(event: FormEvent) {
-    event.preventDefault();
-    try {
-      const joined = await apiRequest<Workspace>("/api/v1/workspaces/invitations/accept", {
-        method: "POST",
-        accessToken: token,
-        body: JSON.stringify({ token: joinToken.trim() }),
-      });
-      setWorkspaces([joined]);
-      setWorkspaceId(joined.id);
-      localStorage.setItem("processflow.workspace", joined.id);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível aceitar o convite.");
-    }
-  }
-
-  async function generateInvitation() {
-    if (!workspace) return;
-    setSaving(true);
-    try {
-      const invitation = await apiRequest<{ token: string; expires_at: string }>(`/api/v1/workspaces/${workspace.id}/invitations`, {
-        method: "POST",
-        accessToken: token,
-        workspaceId: workspace.id,
-        body: JSON.stringify({ expires_in_hours: 48 }),
-      });
-      setInviteToken(invitation.token);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível gerar o convite.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function enterWorkspace(selectedWorkspaceId: string) {
+    setWorkspaceId(selectedWorkspaceId);
+    localStorage.setItem("processflow.workspace", selectedWorkspaceId);
+    setWorkspaceChooserOpen(false);
+    setCreatingWorkspace(false);
+    setError("");
   }
 
   async function createProcess(draft: ProcessDraft) {
@@ -657,16 +614,44 @@ function WorkspaceApp({ session }: { session: Session }) {
     }
   }
 
-  if (!loading && workspaces.length === 0) {
+  if (loading && workspaces.length === 0) {
+    return <main className="centered-page"><div className="loader">Carregando ambientes…</div></main>;
+  }
+
+  if (workspaceChooserOpen) {
     return (
       <main className="centered-page">
-        <section className="auth-card">
-          <div className="brand-mark">P</div><p className="eyebrow">PRIMEIRO ACESSO</p>
-          <h1>Crie o espaço compartilhado</h1>
-          <p>É aqui que os processos do escritório ficarão. Você também pode entrar em um espaço usando o código enviado pelo administrador.</p>
-          <form className="auth-form" onSubmit={createWorkspace}><label>Nome do espaço<input value={workspaceName} minLength={2} onChange={(event) => setWorkspaceName(event.target.value)} required /></label>{error && <div className="form-message">{error}</div>}<button className="primary-btn full-button">Criar espaço</button></form>
-          <div className="divider"><span>ou</span></div>
-          <form className="auth-form compact-form" onSubmit={acceptInvitation}><label>Código do convite<textarea rows={3} value={joinToken} onChange={(event) => setJoinToken(event.target.value)} required /></label><button className="ghost-btn full-button">Entrar no espaço</button></form>
+        <section className="auth-card workspace-chooser-card">
+          <div className="brand-lockup"><div className="brand-mark">P</div><div><strong>ProcessFlow</strong><span>Gestão online</span></div></div>
+          <p className="eyebrow">SELECIONE O AMBIENTE</p>
+          <h1>Onde você quer entrar?</h1>
+          <p>Escolha um ambiente disponível para sua conta ou crie um novo espaço separado.</p>
+
+          <div className="workspace-choice-grid">
+            {workspaces.map((item) => (
+              <button className="workspace-choice" key={item.id} onClick={() => enterWorkspace(item.id)}>
+                <span className="workspace-choice-icon">E</span>
+                <span><strong>{item.name}</strong><small>{item.role === "admin" ? "Administrador" : "Acesso compartilhado"}</small></span>
+                <b>Entrar →</b>
+              </button>
+            ))}
+            <button className="workspace-choice workspace-choice-new" onClick={() => setCreatingWorkspace(true)}>
+              <span className="workspace-choice-icon">＋</span>
+              <span><strong>Novo ambiente</strong><small>Criar um espaço separado</small></span>
+              <b>Criar →</b>
+            </button>
+          </div>
+
+          {creatingWorkspace && (
+            <form className="auth-form workspace-create-form" onSubmit={createWorkspace}>
+              <label>Nome do novo ambiente<input value={workspaceName} minLength={2} autoFocus onChange={(event) => setWorkspaceName(event.target.value)} placeholder="Ex.: Novo escritório" required /></label>
+              {error && <div className="form-message">{error}</div>}
+              <div className="workspace-create-actions"><button type="button" className="ghost-btn" onClick={() => { setCreatingWorkspace(false); setError(""); }}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Criando…" : "Criar ambiente"}</button></div>
+            </form>
+          )}
+
+          {!creatingWorkspace && error && <div className="form-message workspace-message">{error}</div>}
+          <button className="link-button" onClick={() => void supabase.auth.signOut()}>Entrar com outra conta</button>
         </section>
       </main>
     );
@@ -693,12 +678,13 @@ function WorkspaceApp({ session }: { session: Session }) {
             <select aria-label="Espaço de trabalho" value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); localStorage.setItem("processflow.workspace", event.target.value); }}>
               {workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
+            <button className="ghost-btn" onClick={() => setWorkspaceChooserOpen(true)}>Trocar ambiente</button>
             {activePage === "processes" && <button className="primary-btn" onClick={() => setShowNew(true)}>＋ Novo processo</button>}
           </div>
         </header>
 
         {activePage === "processes" && <>
-        <section className="page-head"><div><p className="eyebrow">ESPAÇO COMPARTILHADO</p><h2>{workspace?.name ?? "Carregando…"}</h2><p>{workspace?.role === "admin" ? "Administrador" : "Usuário"} · {total} processo(s) encontrado(s) · Clique em uma linha para abrir</p></div>{workspace?.role === "admin" && <button className="ghost-btn" onClick={() => { setInviteToken(""); setShowInvite(true); }}>Convidar pessoa</button>}</section>
+        <section className="page-head"><div><p className="eyebrow">ESPAÇO COMPARTILHADO</p><h2>{workspace?.name ?? "Carregando…"}</h2><p>{workspace?.role === "admin" ? "Administrador" : "Usuário"} · {total} processo(s) encontrado(s) · Clique em uma linha para abrir</p></div></section>
 
         <section className="toolbar" aria-label="Filtros">
           <label className="search-box">⌕<input placeholder="Buscar por cliente, número ou tipo…" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
@@ -731,7 +717,6 @@ function WorkspaceApp({ session }: { session: Session }) {
       <nav className="mobile-nav" aria-label="Navegação móvel"><button className={activePage === "dashboard" ? "active" : ""} onClick={() => setActivePage("dashboard")}>⌂<span>Dashboard</span></button><button className={activePage === "processes" ? "active" : ""} onClick={() => setActivePage("processes")}>▣<span>Processos</span></button><button className={activePage === "finance" ? "active" : ""} onClick={() => setActivePage("finance")}>R$<span>Financeiro</span></button><button className={activePage === "data" ? "active" : ""} onClick={() => setActivePage("data")}>⇅<span>Dados</span></button><button onClick={() => void supabase.auth.signOut()}>↪<span>Sair</span></button></nav>
       {showNew && <NewProcessModal busy={saving} onClose={() => setShowNew(false)} onSave={createProcess} />}
       {selectedProcess && <ProcessDetailModal key={selectedProcess.id} process={selectedProcess} busy={saving} error={processActionError} onClose={() => setSelectedProcess(null)} onSave={updateSelectedProcess} onToggleStatus={toggleSelectedProcessStatus} onDelete={deleteSelectedProcess} />}
-      {showInvite && workspace && <InviteModal workspace={workspace} token={inviteToken} busy={saving} onGenerate={generateInvitation} onClose={() => setShowInvite(false)} />}
     </div>
   );
 }
