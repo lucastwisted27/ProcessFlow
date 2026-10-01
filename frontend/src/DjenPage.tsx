@@ -18,6 +18,8 @@ interface DjenPageProps {
   onOpenProcess: (process: ProcessRecord) => void;
 }
 
+type MetricFilter = "today" | "unread" | "linked" | "all";
+
 const EMPTY_OVERVIEW: DjenOverview = {
   subscriptions: [],
   publications: [],
@@ -89,6 +91,7 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
   const [search, setSearch] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [linkedOnly, setLinkedOnly] = useState(false);
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>("all");
   const [selected, setSelected] = useState<DjenPublication | null>(null);
   const [openingId, setOpeningId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -284,6 +287,17 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     today: visiblePublications.filter((publication) => publication.publication_date === todayKey).length,
     linked: visiblePublications.filter((publication) => publication.process !== null).length,
   };
+  const displayedPublications = visiblePublications.filter((publication) => {
+    if (metricFilter === "today") return publication.publication_date === todayKey;
+    if (metricFilter === "unread") return !publication.is_read;
+    if (metricFilter === "linked") return publication.process !== null;
+    return true;
+  });
+
+  function selectMetric(filter: MetricFilter) {
+    setMetricFilter(filter);
+    window.setTimeout(() => document.getElementById("djen-feed")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 
   function reuseSavedOab(label: string) {
     const [state, ...numberParts] = label.split(" ");
@@ -333,10 +347,10 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     {overview.subscriptions.length === 0 && overview.publications.length > 0 && <div className="djen-orphan-note" role="status"><strong>As {overview.publications.length} publicações salvas estão disponíveis.</strong><span>Use “Recuperar OAB/AM 18585” acima e confirme “Monitorar OAB” para reativar as consultas futuras.</span></div>}
 
     <section className="metrics-grid djen-metrics">
-      <div className="metric blue"><span>HOJE</span><strong>{visibleStats.today}</strong><small>Publicações de hoje</small></div>
-      <div className="metric orange"><span>NÃO LIDAS</span><strong>{visibleStats.unread}</strong><small>Exigem conferência</small></div>
-      <div className="metric green"><span>VINCULADAS</span><strong>{visibleStats.linked}</strong><small>Ligadas a processos</small></div>
-      <div className="metric blue"><span>TOTAL</span><strong>{visibleStats.total}</strong><small>{activeSubscription ? `OAB/${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "Publicações armazenadas"}</small></div>
+      <button className={`metric blue djen-metric-button ${metricFilter === "today" ? "active" : ""}`} onClick={() => selectMetric("today")}><span>HOJE</span><strong>{visibleStats.today}</strong><small>Publicações de hoje</small><em>Ver publicações →</em></button>
+      <button className={`metric orange djen-metric-button ${metricFilter === "unread" ? "active" : ""}`} onClick={() => selectMetric("unread")}><span>NÃO LIDAS</span><strong>{visibleStats.unread}</strong><small>Exigem conferência</small><em>Ver publicações →</em></button>
+      <button className={`metric green djen-metric-button ${metricFilter === "linked" ? "active" : ""}`} onClick={() => selectMetric("linked")}><span>VINCULADAS</span><strong>{visibleStats.linked}</strong><small>Ligadas a processos</small><em>Ver publicações →</em></button>
+      <button className={`metric blue djen-metric-button ${metricFilter === "all" ? "active" : ""}`} onClick={() => selectMetric("all")}><span>TOTAL</span><strong>{visibleStats.total}</strong><small>{activeSubscription ? `OAB/${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "Publicações armazenadas"}</small><em>Ver todas →</em></button>
     </section>
 
     <section className="toolbar djen-toolbar" aria-label="Filtros das publicações">
@@ -345,8 +359,8 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
       <label className="check-filter"><input type="checkbox" checked={linkedOnly} onChange={(event) => setLinkedOnly(event.target.checked)} /> Com processo vinculado</label>
     </section>
 
-    <section className="panel djen-feed">
-      {loading ? <div className="empty-state">Carregando publicações…</div> : overview.subscriptions.length === 0 && overview.publications.length === 0 ? <div className="empty-state"><strong>Cadastre a OAB para começar.</strong><span>Não é necessário informar senha ou certificado digital.</span></div> : visiblePublications.length === 0 ? <div className="empty-state"><strong>Nenhuma publicação encontrada para esta OAB.</strong><span>Faça uma consulta ou ajuste os filtros.</span></div> : visiblePublications.map((publication) => <button className={`djen-card ${publication.is_read ? "read" : "unread"}`} key={publication.id} onClick={() => void openPublication(publication)}>
+    <section className="panel djen-feed" id="djen-feed">
+      {loading ? <div className="empty-state">Carregando publicações…</div> : overview.subscriptions.length === 0 && overview.publications.length === 0 ? <div className="empty-state"><strong>Cadastre a OAB para começar.</strong><span>Não é necessário informar senha ou certificado digital.</span></div> : displayedPublications.length === 0 ? <div className="empty-state"><strong>Nenhuma publicação neste indicador.</strong><span>Selecione outro card ou ajuste os filtros.</span></div> : displayedPublications.map((publication) => <button className={`djen-card ${publication.is_read ? "read" : "unread"}`} key={publication.id} onClick={() => void openPublication(publication)}>
         <div className="djen-card-date"><strong>{new Date(`${publication.publication_date}T12:00:00`).getDate()}</strong><span>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(`${publication.publication_date}T12:00:00`))}</span></div>
         <div className="djen-card-copy"><div>{!publication.is_read && <b>NOVA</b>}<span>{publication.tribunal}</span><span>{publication.communication_type}</span>{publication.process && <em>PROCESSO VINCULADO</em>}</div><strong>{publication.process_number_formatted || publication.document_type || "Publicação DJEN"}</strong><small>{publication.court_body || publication.medium}</small><p>{publication.content_preview.slice(0, 260)}{publication.content_preview.length > 260 ? "…" : ""}</p></div>
         <i>{openingId === publication.id ? "ABRINDO…" : "LER →"}</i>
