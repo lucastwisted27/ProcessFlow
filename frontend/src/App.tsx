@@ -712,7 +712,7 @@ function WorkspaceApp({ session }: { session: Session }) {
           )}
         </section>
         </>}
-        {activePage === "dashboard" && workspace && <DashboardPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
+        {activePage === "dashboard" && workspace && <DashboardPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "agenda" && workspace && <AgendaPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "finance" && workspace && <FinancePage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
         {activePage === "data" && workspace && <DataPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} canImport={workspace.role === "admin"} />}

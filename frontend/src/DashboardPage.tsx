@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiRequest } from "./lib/api";
-import type { DashboardSummary, FinancialEntryList, ProcessList } from "./types";
+import type { DashboardSummary, FinancialEntryList, ProcessList, ProcessRecord } from "./types";
 
 interface DashboardPageProps {
   accessToken: string;
   workspaceId: string;
   workspaceName: string;
+  onOpenProcess: (process: ProcessRecord) => void;
 }
 
 type DetailKey =
@@ -102,11 +103,12 @@ function DetailModal({ detailKey, rows, total, loading, error, onClose }: {
   );
 }
 
-export function DashboardPage({ accessToken, workspaceId, workspaceName }: DashboardPageProps) {
+export function DashboardPage({ accessToken, workspaceId, workspaceName, onOpenProcess }: DashboardPageProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [processes, setProcesses] = useState<ProcessRecord[]>([]);
   const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
   const [detailRows, setDetailRows] = useState<DetailRow[]>([]);
   const [detailTotal, setDetailTotal] = useState(0);
@@ -116,8 +118,12 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName }: Dashb
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiRequest<DashboardSummary>("/api/v1/dashboard/summary", { method: "GET", accessToken, workspaceId });
+      const [data, processList] = await Promise.all([
+        apiRequest<DashboardSummary>("/api/v1/dashboard/summary", { method: "GET", accessToken, workspaceId }),
+        apiRequest<ProcessList>("/api/v1/processes?limit=200", { method: "GET", accessToken, workspaceId }),
+      ]);
       setSummary(data);
+      setProcesses(processList.items);
       setUpdatedAt(new Date());
       setError("");
     } catch (reason) {
@@ -137,13 +143,17 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName }: Dashb
     setDetailLoading(true);
     try {
       if (key.startsWith("process-")) {
-        const params = new URLSearchParams({ limit: "200" });
-        if (key === "process-progress") params.set("status", "Em andamento");
-        if (key === "process-critical") params.set("attention", "true");
-        if (key === "process-completed") params.set("status", "Concluído");
-        const data = await apiRequest<ProcessList>(`/api/v1/processes?${params}`, { method: "GET", accessToken, workspaceId });
-        setDetailTotal(data.total);
-        setDetailRows(data.items.map((process) => ({
+        const criticalLimit = new Date();
+        criticalLimit.setHours(12, 0, 0, 0);
+        criticalLimit.setDate(criticalLimit.getDate() + 3);
+        const filtered = processes.filter((process) => {
+          if (key === "process-progress") return process.status === "Em andamento";
+          if (key === "process-completed") return process.status === "Concluído";
+          if (key === "process-critical") return process.status !== "Concluído" && Boolean(process.due_date) && new Date(`${process.due_date}T12:00:00`) <= criticalLimit;
+          return true;
+        });
+        setDetailTotal(filtered.length);
+        setDetailRows(filtered.map((process) => ({
           id: process.id,
           title: process.client,
           subtitle: `${process.number || "Sem número"} · ${process.process_type || "Processo"}${process.next_action ? ` · ${process.next_action}` : ""}`,
@@ -190,6 +200,19 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName }: Dashb
   const total = summary?.processes.total ?? 0;
   const completed = summary?.processes.completed ?? 0;
   const completedPercent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const deadlineProcesses = processes
+    .filter((process) => process.status !== "Concluído" && process.due_date)
+    .map((process) => ({
+      process,
+      days: Math.round((new Date(`${process.due_date}T12:00:00`).getTime() - today.getTime()) / 86_400_000),
+    }))
+    .filter((item) => item.days <= 7)
+    .sort((first, second) => first.days - second.days);
+  const overdueCount = deadlineProcesses.filter((item) => item.days < 0).length;
+  const todayCount = deadlineProcesses.filter((item) => item.days === 0).length;
+  const upcomingCount = deadlineProcesses.filter((item) => item.days > 0).length;
 
   return (
     <>
@@ -201,6 +224,20 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName }: Dashb
         </div>
       </section>
       {error && <div className="error-banner" role="alert">{error}</div>}
+      {!loading && <section className={`panel deadline-command-center ${deadlineProcesses.length > 0 ? "has-deadlines" : "clear"}`} aria-labelledby="deadline-center-title">
+        <header>
+          <div><p className="eyebrow">CENTRAL DE PRAZOS</p><h3 id="deadline-center-title">Prazos que exigem atenção</h3><span>Visão imediata dos vencidos e dos próximos 7 dias.</span></div>
+          <div className="deadline-summary-badges"><b className="overdue">{overdueCount}<small>vencido(s)</small></b><b className="today">{todayCount}<small>hoje</small></b><b className="upcoming">{upcomingCount}<small>próximos</small></b></div>
+        </header>
+        {deadlineProcesses.length === 0 ? <div className="deadline-center-empty">✓ Nenhum prazo vencido ou previsto para os próximos 7 dias.</div> : <div className="deadline-center-list">
+          {deadlineProcesses.slice(0, 8).map(({ process, days }) => <button key={process.id} onClick={() => onOpenProcess(process)}>
+            <span className={days < 0 ? "overdue" : days === 0 ? "today" : "upcoming"}>{days < 0 ? `${Math.abs(days)} dia(s) atrasado` : days === 0 ? "Vence hoje" : days === 1 ? "Vence amanhã" : `Vence em ${days} dias`}</span>
+            <strong>{process.client}</strong>
+            <small>{formatDate(process.due_date)} · {process.number || "Sem número"}{process.next_action ? ` · ${process.next_action}` : ""}</small>
+            <i>ABRIR →</i>
+          </button>)}
+        </div>}
+      </section>}
       {loading && !summary ? <section className="panel dashboard-loading" aria-live="polite">Carregando indicadores…</section> : summary ? (
         <div className="dashboard-content">
           <section aria-labelledby="process-metrics-title">

@@ -198,6 +198,15 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
     hearings: activeEvents.filter((event) => event.event_type === "Audiência").length,
     scheduled: activeEvents.length,
   };
+  const todayDate = dateFromKey(today);
+  const upcomingDeadlines = processes
+    .filter((process) => process.status !== "Concluído" && process.due_date)
+    .map((process) => ({
+      process,
+      days: Math.round((dateFromKey(process.due_date!.slice(0, 10)).getTime() - todayDate.getTime()) / 86_400_000),
+    }))
+    .filter(({ days }) => days >= 0 && days <= 7)
+    .sort((first, second) => first.days - second.days);
 
   async function saveEvent(draft: EventDraft) {
     setSaving(true);
@@ -278,6 +287,20 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
         <div className="metric orange"><span>PRAZOS</span><strong>{metrics.deadlines}</strong><small>No período exibido</small></div>
         <div className="metric red"><span>AUDIÊNCIAS</span><strong>{metrics.hearings}</strong><small>Agendadas no período</small></div>
         <div className="metric green"><span>COMPROMISSOS</span><strong>{metrics.scheduled}</strong><small>Eventos ativos no período</small></div>
+      </section>
+      <section className={`panel upcoming-deadlines-panel ${upcomingDeadlines.length > 0 ? "has-deadlines" : "clear"}`}>
+        <header className="panel-head">
+          <div><p className="eyebrow">PRIORIDADE DA SEMANA</p><h3>Próximos prazos — 7 dias</h3><span>Os prazos cadastrados nos processos entram aqui automaticamente.</span></div>
+          <strong>{upcomingDeadlines.length}</strong>
+        </header>
+        {upcomingDeadlines.length === 0 ? <div className="upcoming-deadline-empty">✓ Nenhum processo vence nos próximos 7 dias.</div> : <div className="upcoming-deadline-grid">
+          {upcomingDeadlines.map(({ process, days }) => <button key={process.id} onClick={() => onOpenProcess(process)}>
+            <span className={days === 0 ? "today" : "upcoming"}>{days === 0 ? "VENCE HOJE" : days === 1 ? "VENCE AMANHÃ" : `VENCE EM ${days} DIAS`}</span>
+            <strong>{process.client}</strong>
+            <small>{dateFromKey(process.due_date!.slice(0, 10)).toLocaleDateString("pt-BR")} · {process.number || "Sem número"}{process.next_action ? ` · ${process.next_action}` : ""}</small>
+            <i>ABRIR PROCESSO →</i>
+          </button>)}
+        </div>}
       </section>
       {overview.overdue_deadlines.length > 0 && <section className="panel overdue-deadlines-panel">
         <header className="panel-head"><div><p className="eyebrow">ATENÇÃO NECESSÁRIA</p><h3>Prazos vencidos dos processos</h3></div><strong>{overview.overdue_deadlines.length}</strong></header>
