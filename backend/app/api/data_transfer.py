@@ -73,4 +73,5 @@ async def import_data(
         access.workspace_id,
         bundle,
         mode=mode,
+        created_by=access.user.id,
     )

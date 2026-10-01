@@ -12,13 +12,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.agenda import AgendaEvent
 from app.models.enums import ProcessPriority, ProcessStatus
 from app.models.finance import FinancialEntry, Installment
 from app.models.process import Process, ProcessAttachment
 from app.models.workspace import Workspace
 from app.schemas.data_transfer import (
     BACKUP_FORMAT,
-    BACKUP_VERSION,
+    SUPPORTED_BACKUP_VERSIONS,
+    AgendaEventExport,
+    AgendaEventImport,
     DataExport,
     DataImportReport,
     ExportAttachment,
@@ -59,6 +62,7 @@ def _validate_bundle(
     source_format: str,
     processes: Any,
     financial_entries: Any,
+    agenda_events: Any = None,
 ) -> ImportBundle:
     try:
         return ImportBundle.model_validate(
@@ -66,6 +70,7 @@ def _validate_bundle(
                 "source_format": source_format,
                 "processes": processes or [],
                 "financial_entries": financial_entries or [],
+                "agenda_events": agenda_events or [],
             }
         )
     except ValidationError as exc:
@@ -193,14 +198,17 @@ def parse_import_payload(
 
     file_format = raw.get("format")
     if file_format == BACKUP_FORMAT:
-        if raw.get("version") != BACKUP_VERSION:
+        version = raw.get("version")
+        if version not in SUPPORTED_BACKUP_VERSIONS:
             raise ImportPayloadError(
-                f"Versão de backup incompatível. Esta API aceita a versão {BACKUP_VERSION}."
+                "Versão de backup incompatível. Esta API aceita as versões "
+                f"{sorted(SUPPORTED_BACKUP_VERSIONS)}."
             )
         return _validate_bundle(
-            source_format=f"{BACKUP_FORMAT}-v{BACKUP_VERSION}",
+            source_format=f"{BACKUP_FORMAT}-v{version}",
             processes=raw.get("processes", []),
             financial_entries=raw.get("financial_entries", []),
+            agenda_events=raw.get("agenda_events", []),
         )
 
     if raw.get("app") == "ProcessFlow" or "processos" in raw or "financeiro" in raw:
@@ -210,11 +218,12 @@ def parse_import_payload(
             financial_entries=raw.get("financeiro", []),
         )
 
-    if "processes" in raw or "financial_entries" in raw:
+    if "processes" in raw or "financial_entries" in raw or "agenda_events" in raw:
         return _validate_bundle(
             source_format="processflow-unversioned",
             processes=raw.get("processes", []),
             financial_entries=raw.get("financial_entries", []),
+            agenda_events=raw.get("agenda_events", []),
         )
 
     raise ImportPayloadError(
@@ -247,6 +256,15 @@ def finance_import_key(item: FinancialEntryImport) -> str:
     return f"legacy:finance:{item.legacy_id or 'none'}:{_fingerprint(content)}"
 
 
+def agenda_import_key(item: AgendaEventImport) -> str:
+    if item.source_id:
+        if item.source_id.startswith(("processflow:", "legacy:")):
+            return item.source_id
+        return f"processflow:source:{item.source_id}"
+    content = item.model_dump(mode="json", exclude={"source_id"})
+    return f"legacy:agenda:{_fingerprint(content)}"
+
+
 def _existing_process_keys(row: Process) -> set[str]:
     keys = {f"processflow:process:{row.id}"}
     if row.import_key:
@@ -264,6 +282,15 @@ def _existing_finance_keys(row: FinancialEntry) -> set[str]:
         keys.add(row.import_key)
     legacy_shape = _finance_to_import(row).model_copy(update={"source_id": None})
     keys.add(finance_import_key(legacy_shape))
+    return keys
+
+
+def _existing_agenda_keys(row: AgendaEvent) -> set[str]:
+    keys = {f"processflow:agenda:{row.id}"}
+    if row.import_key:
+        keys.add(row.import_key)
+    legacy_shape = _agenda_to_import(row).model_copy(update={"source_id": None})
+    keys.add(agenda_import_key(legacy_shape))
     return keys
 
 
@@ -309,6 +336,23 @@ def _finance_to_import(row: FinancialEntry) -> FinancialEntryImport:
             }
             for item in row.installments
         ],
+    )
+
+
+def _agenda_to_import(row: AgendaEvent) -> AgendaEventImport:
+    process_source_id = None
+    if row.process is not None:
+        process_source_id = row.process.import_key or f"processflow:process:{row.process.id}"
+    return AgendaEventImport(
+        source_id=row.import_key or f"processflow:agenda:{row.id}",
+        title=row.title,
+        event_type=row.event_type,
+        starts_at=row.starts_at,
+        ends_at=row.ends_at,
+        process_source_id=process_source_id,
+        location=row.location,
+        notes=row.notes,
+        status=row.status,
     )
 
 
@@ -366,9 +410,31 @@ def _finance_model(
     return entry
 
 
+def _agenda_model(
+    item: AgendaEventImport,
+    workspace_id: UUID,
+    created_by: UUID,
+    import_key: str,
+    process_id: UUID | None,
+) -> AgendaEvent:
+    return AgendaEvent(
+        workspace_id=workspace_id,
+        process_id=process_id,
+        created_by=created_by,
+        import_key=import_key,
+        title=item.title,
+        event_type=item.event_type,
+        starts_at=item.starts_at,
+        ends_at=item.ends_at,
+        location=item.location,
+        notes=item.notes,
+        status=item.status,
+    )
+
+
 def import_warnings(bundle: ImportBundle) -> list[str]:
     warnings: list[str] = []
-    if not bundle.processes and not bundle.financial_entries:
+    if not bundle.processes and not bundle.financial_entries and not bundle.agenda_events:
         warnings.append("O arquivo não contém registros para importar.")
     for index, entry in enumerate(bundle.financial_entries, start=1):
         if not entry.is_installment:
@@ -390,7 +456,7 @@ def import_warnings(bundle: ImportBundle) -> list[str]:
 
 async def _workspace_rows(
     session: AsyncSession, workspace_id: UUID
-) -> tuple[list[Process], list[FinancialEntry]]:
+) -> tuple[list[Process], list[FinancialEntry], list[AgendaEvent]]:
     processes = list(
         await session.scalars(
             select(Process)
@@ -407,14 +473,22 @@ async def _workspace_rows(
             .order_by(FinancialEntry.created_at, FinancialEntry.id)
         )
     )
-    return processes, finances
+    agenda_events = list(
+        await session.scalars(
+            select(AgendaEvent)
+            .options(selectinload(AgendaEvent.process))
+            .where(AgendaEvent.workspace_id == workspace_id)
+            .order_by(AgendaEvent.starts_at, AgendaEvent.id)
+        )
+    )
+    return processes, finances, agenda_events
 
 
 async def export_workspace_data(session: AsyncSession, workspace_id: UUID) -> DataExport:
     workspace = await session.get(Workspace, workspace_id)
     if workspace is None:
         raise LookupError("Workspace não encontrado.")
-    processes, finances = await _workspace_rows(session, workspace_id)
+    processes, finances, agenda_events = await _workspace_rows(session, workspace_id)
     return DataExport(
         exported_at=datetime.now(UTC),
         workspace=ExportWorkspace(name=workspace.name),
@@ -469,6 +543,26 @@ async def export_workspace_data(session: AsyncSession, workspace_id: UUID) -> Da
             )
             for row in finances
         ],
+        agenda_events=[
+            AgendaEventExport(
+                source_id=row.import_key or f"processflow:agenda:{row.id}",
+                title=row.title,
+                event_type=row.event_type,
+                starts_at=row.starts_at,
+                ends_at=row.ends_at,
+                process_source_id=(
+                    row.process.import_key or f"processflow:process:{row.process.id}"
+                    if row.process is not None
+                    else None
+                ),
+                location=row.location,
+                notes=row.notes,
+                status=row.status,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in agenda_events
+        ],
     )
 
 
@@ -478,17 +572,23 @@ async def import_workspace_data(
     bundle: ImportBundle,
     *,
     mode: ImportMode,
+    created_by: UUID,
 ) -> DataImportReport:
-    existing_processes, existing_finances = await _workspace_rows(session, workspace_id)
+    existing_processes, existing_finances, existing_agenda = await _workspace_rows(
+        session, workspace_id
+    )
     replace = mode == "replace"
 
     process_keys: set[str] = set()
     finance_keys: set[str] = set()
+    agenda_keys: set[str] = set()
     if not replace:
         for row in existing_processes:
             process_keys.update(_existing_process_keys(row))
         for row in existing_finances:
             finance_keys.update(_existing_finance_keys(row))
+        for row in existing_agenda:
+            agenda_keys.update(_existing_agenda_keys(row))
 
     processes_to_add: list[tuple[ProcessImport, str]] = []
     skipped_processes = 0
@@ -510,10 +610,25 @@ async def import_workspace_data(
         finance_keys.add(key)
         finances_to_add.append((item, key))
 
+    agenda_to_add: list[tuple[AgendaEventImport, str]] = []
+    skipped_agenda = 0
+    for item in bundle.agenda_events:
+        key = agenda_import_key(item)
+        if key in agenda_keys:
+            skipped_agenda += 1
+            continue
+        agenda_keys.add(key)
+        agenda_to_add.append((item, key))
+
     committed = mode != "preview"
     if committed:
         try:
             if replace:
+                await session.execute(
+                    delete(AgendaEvent)
+                    .where(AgendaEvent.workspace_id == workspace_id)
+                    .execution_options(synchronize_session=False)
+                )
                 await session.execute(
                     delete(Process)
                     .where(Process.workspace_id == workspace_id)
@@ -524,23 +639,54 @@ async def import_workspace_data(
                     .where(FinancialEntry.workspace_id == workspace_id)
                     .execution_options(synchronize_session=False)
                 )
-            session.add_all(
-                [
-                    _process_model(item, workspace_id, import_key)
-                    for item, import_key in processes_to_add
-                ]
-            )
+            process_models = [
+                _process_model(item, workspace_id, import_key)
+                for item, import_key in processes_to_add
+            ]
+            session.add_all(process_models)
             session.add_all(
                 [
                     _finance_model(item, workspace_id, import_key)
                     for item, import_key in finances_to_add
                 ]
             )
+            await session.flush()
+            process_lookup: dict[str, UUID] = {}
+            if not replace:
+                for row in existing_processes:
+                    for key in _existing_process_keys(row):
+                        process_lookup[key] = row.id
+            for row in process_models:
+                for key in _existing_process_keys(row):
+                    process_lookup[key] = row.id
+            missing_process_links = 0
+            event_models: list[AgendaEvent] = []
+            for item, import_key in agenda_to_add:
+                process_id = None
+                if item.process_source_id:
+                    candidates = {item.process_source_id}
+                    known_prefixes = ("processflow:", "trello:", "legacy:")
+                    if not item.process_source_id.startswith(known_prefixes):
+                        candidates.add(f"processflow:source:{item.process_source_id}")
+                    process_id = next(
+                        (process_lookup[key] for key in candidates if key in process_lookup), None
+                    )
+                    if process_id is None:
+                        missing_process_links += 1
+                event_models.append(
+                    _agenda_model(item, workspace_id, created_by, import_key, process_id)
+                )
+            session.add_all(event_models)
             await session.commit()
         except Exception:
             await session.rollback()
             raise
 
+    warnings = import_warnings(bundle)
+    if committed and missing_process_links:
+        warnings.append(
+            f"{missing_process_links} compromisso(s) foram importados sem vínculo com processo."
+        )
     return DataImportReport(
         mode=mode,
         committed=committed,
@@ -557,5 +703,11 @@ async def import_workspace_data(
             skipped_duplicates=skipped_finances,
             deleted=len(existing_finances) if replace else 0,
         ),
-        warnings=import_warnings(bundle),
+        agenda_events=ImportEntityReport(
+            received=len(bundle.agenda_events),
+            imported=len(agenda_to_add),
+            skipped_duplicates=skipped_agenda,
+            deleted=len(existing_agenda) if replace else 0,
+        ),
+        warnings=warnings,
     )

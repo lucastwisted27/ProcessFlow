@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import (
+    AgendaEventStatus,
+    AgendaEventType,
     FinancialKind,
     InstallmentFrequency,
     InstallmentStatus,
@@ -16,7 +18,8 @@ from app.models.enums import (
 )
 
 BACKUP_FORMAT = "processflow-backup"
-BACKUP_VERSION = 2
+BACKUP_VERSION = 3
+SUPPORTED_BACKUP_VERSIONS = {2, 3}
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -260,10 +263,36 @@ class FinancialEntryImport(BaseModel):
         return self
 
 
+class AgendaEventImport(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    source_id: str | None = Field(default=None, max_length=240)
+    title: str = Field(min_length=1, max_length=300)
+    event_type: AgendaEventType = AgendaEventType.COMMITMENT
+    starts_at: datetime
+    ends_at: datetime | None = None
+    process_source_id: str | None = Field(default=None, max_length=240)
+    location: str = Field(default="", max_length=500)
+    notes: str = Field(default="", max_length=50_000)
+    status: AgendaEventStatus = AgendaEventStatus.SCHEDULED
+
+    @field_validator("source_id", "title", "process_source_id", "location", "notes", mode="before")
+    @classmethod
+    def strip_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_period(self) -> AgendaEventImport:
+        if self.ends_at is not None and self.ends_at < self.starts_at:
+            raise ValueError("o horário final não pode ser anterior ao início")
+        return self
+
+
 class ImportBundle(BaseModel):
     source_format: str
     processes: list[ProcessImport] = Field(default_factory=list, max_length=20_000)
     financial_entries: list[FinancialEntryImport] = Field(default_factory=list, max_length=20_000)
+    agenda_events: list[AgendaEventImport] = Field(default_factory=list, max_length=20_000)
 
 
 class ExportAttachment(BaseModel):
@@ -315,17 +344,32 @@ class FinancialEntryExport(BaseModel):
     updated_at: datetime
 
 
+class AgendaEventExport(BaseModel):
+    source_id: str
+    title: str
+    event_type: AgendaEventType
+    starts_at: datetime
+    ends_at: datetime | None
+    process_source_id: str | None
+    location: str
+    notes: str
+    status: AgendaEventStatus
+    created_at: datetime
+    updated_at: datetime
+
+
 class ExportWorkspace(BaseModel):
     name: str
 
 
 class DataExport(BaseModel):
     format: Literal["processflow-backup"] = BACKUP_FORMAT
-    version: Literal[2] = BACKUP_VERSION
+    version: Literal[3] = BACKUP_VERSION
     exported_at: datetime
     workspace: ExportWorkspace
     processes: list[ProcessExport]
     financial_entries: list[FinancialEntryExport]
+    agenda_events: list[AgendaEventExport]
 
 
 class ImportEntityReport(BaseModel):
@@ -341,6 +385,7 @@ class DataImportReport(BaseModel):
     source_format: str
     processes: ImportEntityReport
     financial_entries: ImportEntityReport
+    agenda_events: ImportEntityReport
     warnings: list[str] = Field(default_factory=list)
 
 

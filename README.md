@@ -15,6 +15,8 @@ A fundação web já contém:
 - cadastro de receitas, despesas e recebimentos parcelados;
 - recebimento de parcelas e resumo de saldo;
 - Dashboard compartilhado com indicadores de processos, prazos e finanças;
+- agenda compartilhada com calendário mensal, audiências, reuniões e compromissos;
+- prazos dos processos exibidos automaticamente na agenda, sem duplicar cadastros;
 - exportação de backup JSON por workspace;
 - importação web com prévia, confirmação e deduplicação;
 - compatibilidade com backup ProcessFlow, JSON legado e exportação bruta do Trello;
@@ -126,7 +128,7 @@ alembic upgrade head
 
 ## Importação, exportação e dados antigos
 
-Na aplicação, abra **Importar / Exportar**. A exportação gera um backup JSON do espaço selecionado. Para importar, escolha o arquivo, revise a prévia e confirme a mesclagem. Somente administradores podem importar; a exportação está disponível a todos os membros.
+Na aplicação, abra **Importar / Exportar**. A exportação gera um backup JSON do espaço selecionado, incluindo processos, financeiro e agenda. Para importar, escolha o arquivo, revise a prévia e confirme a mesclagem. Somente administradores podem importar; a exportação está disponível a todos os membros. Backups anteriores, na versão 2, continuam compatíveis.
 
 A interface aceita:
 

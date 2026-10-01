@@ -34,3 +34,16 @@ class InstallmentFrequency(StrEnum):
 class InstallmentStatus(StrEnum):
     PENDING = "pendente"
     RECEIVED = "recebida"
+
+
+class AgendaEventType(StrEnum):
+    HEARING = "Audiência"
+    MEETING = "Reunião"
+    COMMITMENT = "Compromisso"
+    REMINDER = "Lembrete"
+
+
+class AgendaEventStatus(StrEnum):
+    SCHEDULED = "agendado"
+    COMPLETED = "concluído"
+    CANCELED = "cancelado"

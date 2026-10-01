@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.agenda import router as agenda_router
 from app.api.dashboard import router as dashboard_router
 from app.api.data_transfer import router as data_transfer_router
 from app.api.finance import router as finance_router
@@ -29,6 +30,7 @@ app.include_router(processes_router, prefix="/api/v1")
 app.include_router(finance_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(data_transfer_router, prefix="/api/v1")
+app.include_router(agenda_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])

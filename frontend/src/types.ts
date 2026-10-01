@@ -47,6 +47,38 @@ export interface ProcessDraft {
   notes: string;
 }
 
+export type AgendaEventType = "Audiência" | "Reunião" | "Compromisso" | "Lembrete";
+export type AgendaEventStatus = "agendado" | "concluído" | "cancelado";
+
+export interface AgendaEvent {
+  id: string;
+  title: string;
+  event_type: AgendaEventType;
+  starts_at: string;
+  ends_at: string | null;
+  process_id: string | null;
+  process: { id: string; client: string; number: string } | null;
+  location: string;
+  notes: string;
+  status: AgendaEventStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProcessDeadline {
+  id: string;
+  client: string;
+  number: string;
+  due_date: string;
+  next_action: string;
+  priority: ProcessPriority;
+}
+
+export interface AgendaOverview {
+  events: AgendaEvent[];
+  process_deadlines: ProcessDeadline[];
+}
+
 export type FinancialKind = "receita" | "despesa";
 export type InstallmentFrequency = "semanal" | "quinzenal" | "mensal";
 
@@ -109,5 +141,6 @@ export interface DataImportSummary {
   source_format: string;
   processes: ImportEntitySummary;
   financial_entries: ImportEntitySummary;
+  agenda_events: ImportEntitySummary;
   warnings: string[];
 }

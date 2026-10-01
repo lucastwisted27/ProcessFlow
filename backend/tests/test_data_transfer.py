@@ -5,6 +5,7 @@ import pytest
 from app.models.enums import ProcessStatus
 from app.services.data_transfer import (
     ImportPayloadError,
+    agenda_import_key,
     finance_import_key,
     import_warnings,
     parse_import_payload,
@@ -209,3 +210,31 @@ def test_installment_inconsistencies_are_warnings_not_data_loss() -> None:
     )
     warnings = import_warnings(bundle)
     assert len(warnings) == 2
+
+
+def test_version_three_backup_preserves_agenda_identity_and_process_link() -> None:
+    bundle = parse_import_payload(
+        {
+            "format": "processflow-backup",
+            "version": 3,
+            "processes": [],
+            "financial_entries": [],
+            "agenda_events": [
+                {
+                    "source_id": "processflow:agenda:33333333-3333-3333-3333-333333333333",
+                    "title": "Audiência",
+                    "event_type": "Audiência",
+                    "starts_at": "2026-10-10T13:00:00Z",
+                    "process_source_id": (
+                        "processflow:process:11111111-1111-1111-1111-111111111111"
+                    ),
+                }
+            ],
+        }
+    )
+
+    event = bundle.agenda_events[0]
+    assert agenda_import_key(event).startswith("processflow:agenda:")
+    assert event.process_source_id == (
+        "processflow:process:11111111-1111-1111-1111-111111111111"
+    )

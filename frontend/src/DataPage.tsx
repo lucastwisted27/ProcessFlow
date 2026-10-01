@@ -16,6 +16,7 @@ interface SelectedBackup {
   data: Record<string, unknown> | unknown[];
   processCount: number | null;
   financeCount: number | null;
+  agendaCount: number | null;
   sourceType: "processes" | "finance" | null;
 }
 
@@ -36,11 +37,12 @@ function itemCount(value: unknown): number | null {
 function backupCounts(data: Record<string, unknown> | unknown[], fileName: string): {
   processes: number | null;
   finances: number | null;
+  agenda: number | null;
 } {
   if (Array.isArray(data)) {
     return fileName.toLowerCase().includes("financ")
-      ? { processes: null, finances: data.length }
-      : { processes: data.length, finances: null };
+      ? { processes: null, finances: data.length, agenda: null }
+      : { processes: data.length, finances: null, agenda: null };
   }
   const nested = data.data && typeof data.data === "object" && !Array.isArray(data.data)
     ? data.data as Record<string, unknown>
@@ -54,6 +56,7 @@ function backupCounts(data: Record<string, unknown> | unknown[], fileName: strin
       ?? nested?.financial_entries
       ?? nested?.finances,
     ),
+    agenda: itemCount(data.agenda_events ?? nested?.agenda_events),
   };
 }
 
@@ -133,6 +136,7 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
         data,
         processCount: counts.processes,
         financeCount: counts.finances,
+        agendaCount: counts.agenda,
         sourceType: sourceTypeFor(data, file.name),
       });
     } catch (reason) {
@@ -183,7 +187,7 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
       });
       setResult(imported);
       setSuccess(
-        `Importação concluída: ${imported.processes.imported} processo(s) e ${imported.financial_entries.imported} lançamento(s) adicionados.`,
+        `Importação concluída: ${imported.processes.imported} processo(s), ${imported.financial_entries.imported} lançamento(s) e ${imported.agenda_events.imported} compromisso(s) adicionados.`,
       );
       setSelected(null);
       setPreview(null);
@@ -215,7 +219,7 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
           <div>
             <p className="eyebrow">CRIAR BACKUP</p>
             <h3>Exportar dados</h3>
-            <p>Baixe processos e informações financeiras deste espaço em um único arquivo JSON.</p>
+            <p>Baixe processos, informações financeiras e compromissos deste espaço em um único arquivo JSON.</p>
           </div>
           <button className="primary-btn" disabled={exporting} onClick={() => void exportData()}>
             {exporting ? "Preparando arquivo…" : "Exportar arquivo JSON"}
@@ -274,10 +278,11 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
               </div>
             </div>
 
-            {(selected.processCount !== null || selected.financeCount !== null) && (
+            {(selected.processCount !== null || selected.financeCount !== null || selected.agendaCount !== null) && (
               <div className="file-preview-counts">
                 {selected.processCount !== null && <span><b>{selected.processCount}</b> processo(s) no arquivo</span>}
                 {selected.financeCount !== null && <span><b>{selected.financeCount}</b> lançamento(s) financeiro(s)</span>}
+                {selected.agendaCount !== null && <span><b>{selected.agendaCount}</b> compromisso(s)</span>}
               </div>
             )}
 
@@ -299,7 +304,8 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
                 <div className="server-preview" role="status">
                   <div><span>Processos encontrados</span><strong>{preview.processes.received}</strong></div>
                   <div><span>Lançamentos encontrados</span><strong>{preview.financial_entries.received}</strong></div>
-                  <div><span>Duplicados ignorados</span><strong>{preview.processes.skipped_duplicates + preview.financial_entries.skipped_duplicates}</strong></div>
+                  <div><span>Compromissos encontrados</span><strong>{preview.agenda_events.received}</strong></div>
+                  <div><span>Duplicados ignorados</span><strong>{preview.processes.skipped_duplicates + preview.financial_entries.skipped_duplicates + preview.agenda_events.skipped_duplicates}</strong></div>
                 </div>
                 {preview.warnings.length > 0 && <div className="preview-warnings"><strong>Avisos da validação</strong><ul>{preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
                 <div className="import-warning">
@@ -329,7 +335,8 @@ export function DataPage({ accessToken, workspaceId, workspaceName, canImport }:
           <div>
             <span><b>{result.processes.imported}</b> processo(s) importado(s)</span>
             <span><b>{result.financial_entries.imported}</b> lançamento(s) importado(s)</span>
-            <span><b>{result.processes.skipped_duplicates + result.financial_entries.skipped_duplicates}</b> duplicado(s) ignorado(s)</span>
+            <span><b>{result.agenda_events.imported}</b> compromisso(s) importado(s)</span>
+            <span><b>{result.processes.skipped_duplicates + result.financial_entries.skipped_duplicates + result.agenda_events.skipped_duplicates}</b> duplicado(s) ignorado(s)</span>
           </div>
         </section>
       )}
