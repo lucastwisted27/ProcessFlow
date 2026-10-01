@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -88,6 +89,11 @@ class DjenSyncResult(BaseModel):
     created: int
     linked: int
     warnings: list[str]
+
+
+class DjenIngestRequest(BaseModel):
+    subscription_id: UUID
+    items: list[dict[str, Any]] = Field(max_length=1_000)
 
 
 class DjenReadUpdate(BaseModel):

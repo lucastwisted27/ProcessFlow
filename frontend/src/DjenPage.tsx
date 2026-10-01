@@ -35,6 +35,16 @@ function isSyncedToday(value: string | null): boolean {
   return synced.getFullYear() === today.getFullYear() && synced.getMonth() === today.getMonth() && synced.getDate() === today.getDate();
 }
 
+function localDateKey(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(value: Date, days: number): Date {
+  const result = new Date(value);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 function PublicationModal({ publication, busy, onClose, onToggleRead, onOpenProcess }: {
   publication: DjenPublication;
   busy: boolean;
@@ -115,7 +125,51 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     setSyncing(true);
     if (!automatic) setNotice("");
     try {
-      const result = await apiRequest<DjenSyncResult>("/api/v1/djen/sync?days=7", { method: "POST", accessToken, workspaceId });
+      let result: DjenSyncResult;
+      try {
+        result = await apiRequest<DjenSyncResult>("/api/v1/djen/sync?days=7", { method: "POST", accessToken, workspaceId });
+        if (result.warnings.length > 0) throw new Error("Consulta parcial pelo servidor.");
+      } catch {
+        // Alguns datacenters são recusados pelo firewall do CNJ. A API pública libera CORS,
+        // então o navegador consulta a fonte oficial e entrega o resultado ao nosso backend.
+        const aggregate: DjenSyncResult = { fetched: 0, created: 0, linked: 0, warnings: [] };
+        for (const subscription of overview.subscriptions) {
+          const today = new Date();
+          const oldest = addDays(today, subscription.last_synced_at ? -7 : -30);
+          if (subscription.last_synced_at) {
+            const lastSync = addDays(new Date(subscription.last_synced_at), -1);
+            if (lastSync > oldest) oldest.setTime(lastSync.getTime());
+          }
+          const items: unknown[] = [];
+          for (let page = 1; page <= 10; page += 1) {
+            const url = new URL("https://comunicaapi.pje.jus.br/api/v1/comunicacao");
+            url.search = new URLSearchParams({
+              numeroOab: subscription.oab_number,
+              ufOab: subscription.oab_state,
+              dataDisponibilizacaoInicio: localDateKey(oldest),
+              dataDisponibilizacaoFim: localDateKey(today),
+              pagina: String(page),
+              itensPorPagina: "100",
+            }).toString();
+            const response = await fetch(url);
+            if (response.status === 429) throw new Error("O CNJ limitou temporariamente as consultas. Aguarde 1 minuto e tente novamente.");
+            if (!response.ok) throw new Error(`O CNJ recusou a consulta da OAB/${subscription.oab_state} ${subscription.oab_number} (erro ${response.status}).`);
+            const payload = await response.json() as { items?: unknown[] };
+            const pageItems = Array.isArray(payload.items) ? payload.items : [];
+            items.push(...pageItems);
+            if (pageItems.length < 100) break;
+          }
+          const ingested = await apiRequest<DjenSyncResult>("/api/v1/djen/ingest", {
+            method: "POST", accessToken, workspaceId,
+            body: JSON.stringify({ subscription_id: subscription.id, items }),
+          });
+          aggregate.fetched += ingested.fetched;
+          aggregate.created += ingested.created;
+          aggregate.linked += ingested.linked;
+          aggregate.warnings.push(...ingested.warnings);
+        }
+        result = aggregate;
+      }
       setNotice(result.created > 0 ? `${result.created} nova(s) publicação(ões) encontrada(s); ${result.linked} vínculo(s) com processos.` : "Consulta concluída. Nenhuma publicação nova no período consultado.");
       if (result.warnings.length > 0) setError(result.warnings.join(" "));
       await load();
@@ -124,7 +178,7 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     } finally {
       setSyncing(false);
     }
-  }, [accessToken, load, workspaceId]);
+  }, [accessToken, load, overview.subscriptions, workspaceId]);
 
   useEffect(() => {
     if (loading || autoSyncAttempted.current || overview.subscriptions.length === 0 || isSyncedToday(overview.last_synced_at)) return;

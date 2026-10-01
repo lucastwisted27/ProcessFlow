@@ -13,6 +13,7 @@ from app.db import get_session
 from app.models.djen import DjenPublication, DjenSubscription
 from app.models.process import Process
 from app.schemas.djen import (
+    DjenIngestRequest,
     DjenOverview,
     DjenPublicationRead,
     DjenReadUpdate,
@@ -25,6 +26,101 @@ from app.services.djen import fetch_djen_publications, html_to_text, normalize_p
 
 router = APIRouter(prefix="/djen", tags=["djen"])
 OFFICE_TIMEZONE = ZoneInfo("America/Manaus")
+
+
+async def _ingest_items(
+    session: AsyncSession,
+    workspace_id: UUID,
+    subscription: DjenSubscription,
+    items: list[dict],
+) -> tuple[int, int]:
+    processes = list(
+        await session.scalars(select(Process).where(Process.workspace_id == workspace_id))
+    )
+    process_by_number = {
+        normalized: process
+        for process in processes
+        if (normalized := normalize_process_number(process.number))
+    }
+    existing = list(
+        await session.scalars(
+            select(DjenPublication).where(DjenPublication.workspace_id == workspace_id)
+        )
+    )
+    existing_by_external = {item.external_id: item for item in existing}
+    today = datetime.now(OFFICE_TIMEZONE).date()
+    created = 0
+    linked = 0
+    oab_label = f"{subscription.oab_state} {subscription.oab_number}"
+
+    for item in items:
+        external_id = str(item.get("id") or item.get("hash") or "")
+        if not external_id:
+            continue
+        raw_date = str(
+            item.get("data_disponibilizacao") or item.get("datadisponibilizacao") or ""
+        )
+        try:
+            publication_date = date.fromisoformat(raw_date[:10])
+        except ValueError:
+            publication_date = today
+        process_number = normalize_process_number(str(item.get("numero_processo") or ""))
+        matched_process = process_by_number.get(process_number)
+        attorneys = []
+        for relation in item.get("destinatarioadvogados") or []:
+            lawyer = relation.get("advogado") or {}
+            attorneys.append(
+                {
+                    "name": str(lawyer.get("nome") or ""),
+                    "oab_number": str(lawyer.get("numero_oab") or ""),
+                    "oab_state": str(lawyer.get("uf_oab") or ""),
+                }
+            )
+        recipients = [
+            str(recipient.get("nome") or "")
+            for recipient in item.get("destinatarios") or []
+            if recipient.get("nome")
+        ]
+        values = {
+            "process_id": matched_process.id if matched_process else None,
+            "publication_hash": str(item.get("hash") or ""),
+            "publication_date": publication_date,
+            "tribunal": str(item.get("siglaTribunal") or ""),
+            "communication_type": str(item.get("tipoComunicacao") or "Publicação"),
+            "court_body": str(item.get("nomeOrgao") or ""),
+            "document_type": str(item.get("tipoDocumento") or ""),
+            "medium": str(item.get("meiocompleto") or item.get("meio") or "DJEN"),
+            "process_number": process_number,
+            "process_number_formatted": str(
+                item.get("numeroprocessocommascara") or item.get("numero_processo") or ""
+            ),
+            "content": html_to_text(str(item.get("texto") or ""))[:250_000],
+            "official_link": str(item.get("link") or ""),
+            "recipients": recipients,
+            "attorneys": attorneys,
+        }
+        publication = existing_by_external.get(external_id)
+        if publication is None:
+            publication = DjenPublication(
+                workspace_id=workspace_id,
+                external_id=external_id,
+                matched_oabs=[oab_label],
+                **values,
+            )
+            session.add(publication)
+            existing_by_external[external_id] = publication
+            created += 1
+        else:
+            for field, value in values.items():
+                setattr(publication, field, value)
+            if oab_label not in publication.matched_oabs:
+                publication.matched_oabs = [*publication.matched_oabs, oab_label]
+        if matched_process:
+            linked += 1
+
+    subscription.last_synced_at = datetime.now(UTC)
+    await session.flush()
+    return created, linked
 
 
 async def _overview(
@@ -179,21 +275,6 @@ async def sync_djen(
     if not subscriptions:
         raise HTTPException(status_code=422, detail="Cadastre ao menos uma inscrição da OAB.")
 
-    processes = list(
-        await session.scalars(select(Process).where(Process.workspace_id == access.workspace_id))
-    )
-    process_by_number = {
-        normalized: process
-        for process in processes
-        if (normalized := normalize_process_number(process.number))
-    }
-    existing = list(
-        await session.scalars(
-            select(DjenPublication).where(DjenPublication.workspace_id == access.workspace_id)
-        )
-    )
-    existing_by_external = {item.external_id: item for item in existing}
-    now = datetime.now(UTC)
     today = datetime.now(OFFICE_TIMEZONE).date()
     fetched = 0
     created = 0
@@ -221,72 +302,11 @@ async def sync_djen(
 
         successful_subscriptions += 1
         fetched += len(items)
-        subscription.last_synced_at = now
-        oab_label = f"{subscription.oab_state} {subscription.oab_number}"
-        for item in items:
-            external_id = str(item.get("id") or item.get("hash") or "")
-            if not external_id:
-                continue
-            raw_date = str(
-                item.get("data_disponibilizacao") or item.get("datadisponibilizacao") or ""
-            )
-            try:
-                publication_date = date.fromisoformat(raw_date[:10])
-            except ValueError:
-                publication_date = today
-            process_number = normalize_process_number(str(item.get("numero_processo") or ""))
-            matched_process = process_by_number.get(process_number)
-            attorneys = []
-            for relation in item.get("destinatarioadvogados") or []:
-                lawyer = relation.get("advogado") or {}
-                attorneys.append(
-                    {
-                        "name": str(lawyer.get("nome") or ""),
-                        "oab_number": str(lawyer.get("numero_oab") or ""),
-                        "oab_state": str(lawyer.get("uf_oab") or ""),
-                    }
-                )
-            recipients = [
-                str(recipient.get("nome") or "")
-                for recipient in item.get("destinatarios") or []
-                if recipient.get("nome")
-            ]
-            values = {
-                "process_id": matched_process.id if matched_process else None,
-                "publication_hash": str(item.get("hash") or ""),
-                "publication_date": publication_date,
-                "tribunal": str(item.get("siglaTribunal") or ""),
-                "communication_type": str(item.get("tipoComunicacao") or "Publicação"),
-                "court_body": str(item.get("nomeOrgao") or ""),
-                "document_type": str(item.get("tipoDocumento") or ""),
-                "medium": str(item.get("meiocompleto") or item.get("meio") or "DJEN"),
-                "process_number": process_number,
-                "process_number_formatted": str(
-                    item.get("numeroprocessocommascara") or item.get("numero_processo") or ""
-                ),
-                "content": html_to_text(str(item.get("texto") or ""))[:250_000],
-                "official_link": str(item.get("link") or ""),
-                "recipients": recipients,
-                "attorneys": attorneys,
-            }
-            publication = existing_by_external.get(external_id)
-            if publication is None:
-                publication = DjenPublication(
-                    workspace_id=access.workspace_id,
-                    external_id=external_id,
-                    matched_oabs=[oab_label],
-                    **values,
-                )
-                session.add(publication)
-                existing_by_external[external_id] = publication
-                created += 1
-            else:
-                for field, value in values.items():
-                    setattr(publication, field, value)
-                if oab_label not in publication.matched_oabs:
-                    publication.matched_oabs = [*publication.matched_oabs, oab_label]
-            if matched_process:
-                linked += 1
+        new_count, linked_count = await _ingest_items(
+            session, access.workspace_id, subscription, items
+        )
+        created += new_count
+        linked += linked_count
 
     if successful_subscriptions == 0:
         await session.rollback()
@@ -296,6 +316,31 @@ async def sync_djen(
         )
     await session.commit()
     return DjenSyncResult(fetched=fetched, created=created, linked=linked, warnings=warnings)
+
+
+@router.post("/ingest", response_model=DjenSyncResult)
+async def ingest_djen_from_browser(
+    payload: DjenIngestRequest,
+    access: WorkspaceAccess = Depends(get_workspace_access),
+    session: AsyncSession = Depends(get_session),
+) -> DjenSyncResult:
+    """Persiste uma consulta pública feita pelo navegador quando o CNJ bloqueia o datacenter."""
+    subscription = await session.scalar(
+        select(DjenSubscription).where(
+            DjenSubscription.id == payload.subscription_id,
+            DjenSubscription.workspace_id == access.workspace_id,
+            DjenSubscription.active.is_(True),
+        )
+    )
+    if subscription is None:
+        raise HTTPException(status_code=404, detail="Inscrição da OAB não encontrada.")
+    created, linked = await _ingest_items(
+        session, access.workspace_id, subscription, payload.items
+    )
+    await session.commit()
+    return DjenSyncResult(
+        fetched=len(payload.items), created=created, linked=linked, warnings=[]
+    )
 
 
 @router.patch("/publications/{publication_id}/read", response_model=DjenPublicationRead)
