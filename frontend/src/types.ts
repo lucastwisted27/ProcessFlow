@@ -129,6 +129,51 @@ export interface DashboardSummary {
   };
 }
 
+export interface DjenSubscription {
+  id: string;
+  lawyer_name: string;
+  oab_number: string;
+  oab_state: string;
+  active: boolean;
+  last_synced_at: string | null;
+  created_at: string;
+}
+
+export interface DjenPublication {
+  id: string;
+  external_id: string;
+  publication_date: string;
+  tribunal: string;
+  communication_type: string;
+  court_body: string;
+  document_type: string;
+  medium: string;
+  process_number: string;
+  process_number_formatted: string;
+  content: string;
+  official_link: string;
+  recipients: string[];
+  attorneys: Array<{ name: string; oab_number: string; oab_state: string }>;
+  matched_oabs: string[];
+  is_read: boolean;
+  process: { id: string; client: string; number: string } | null;
+  created_at: string;
+}
+
+export interface DjenOverview {
+  subscriptions: DjenSubscription[];
+  publications: DjenPublication[];
+  stats: { total: number; unread: number; today: number; linked: number };
+  last_synced_at: string | null;
+}
+
+export interface DjenSyncResult {
+  fetched: number;
+  created: number;
+  linked: number;
+  warnings: string[];
+}
+
 export interface ImportEntitySummary {
   received: number;
   imported: number;

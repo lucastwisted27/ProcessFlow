@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.agenda import router as agenda_router
 from app.api.dashboard import router as dashboard_router
 from app.api.data_transfer import router as data_transfer_router
+from app.api.djen import router as djen_router
 from app.api.finance import router as finance_router
 from app.api.processes import router as processes_router
 from app.api.workspaces import router as workspaces_router
@@ -31,6 +32,7 @@ app.include_router(finance_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(data_transfer_router, prefix="/api/v1")
 app.include_router(agenda_router, prefix="/api/v1")
+app.include_router(djen_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
