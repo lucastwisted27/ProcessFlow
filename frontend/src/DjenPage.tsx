@@ -93,6 +93,7 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
   const [lawyerName, setLawyerName] = useState("");
   const [oabNumber, setOabNumber] = useState("");
   const [oabState, setOabState] = useState("");
+  const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null);
   const autoSyncAttempted = useRef(false);
 
   const load = useCallback(async () => {
@@ -114,7 +115,16 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
 
   useEffect(() => {
     autoSyncAttempted.current = false;
+    setActiveSubscriptionId(null);
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (activeSubscriptionId === null && overview.subscriptions.length > 0) {
+      setActiveSubscriptionId(overview.subscriptions[0].id);
+    } else if (activeSubscriptionId && activeSubscriptionId !== "all" && !overview.subscriptions.some((item) => item.id === activeSubscriptionId)) {
+      setActiveSubscriptionId(overview.subscriptions[0]?.id ?? null);
+    }
+  }, [activeSubscriptionId, overview.subscriptions]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
@@ -191,10 +201,11 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     setSaving(true);
     setError("");
     try {
-      await apiRequest<DjenSubscription>("/api/v1/djen/subscriptions", {
+      const created = await apiRequest<DjenSubscription>("/api/v1/djen/subscriptions", {
         method: "POST", accessToken, workspaceId,
         body: JSON.stringify({ lawyer_name: lawyerName, oab_number: oabNumber, oab_state: oabState }),
       });
+      setActiveSubscriptionId(created.id);
       setLawyerName("");
       setOabNumber("");
       setOabState("");
@@ -254,6 +265,19 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     }
   }
 
+  const activeSubscription = overview.subscriptions.find((item) => item.id === activeSubscriptionId) ?? null;
+  const activeOabLabel = activeSubscription ? `${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "";
+  const visiblePublications = activeSubscriptionId === "all" || !activeSubscription
+    ? overview.publications
+    : overview.publications.filter((publication) => publication.matched_oabs.includes(activeOabLabel));
+  const todayKey = localDateKey(new Date());
+  const visibleStats = activeSubscriptionId === "all" || !activeSubscription ? overview.stats : {
+    total: visiblePublications.length,
+    unread: visiblePublications.filter((publication) => !publication.is_read).length,
+    today: visiblePublications.filter((publication) => publication.publication_date === todayKey).length,
+    linked: visiblePublications.filter((publication) => publication.process !== null).length,
+  };
+
   return <>
     <section className="page-head djen-heading">
       <div><p className="eyebrow">ATUALIZAÇÕES DIÁRIAS</p><h2>Publicações DJEN</h2><p>{workspaceName} · consulta oficial por OAB e vínculo automático com os processos.</p></div>
@@ -278,11 +302,22 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
       </div>
     </section>}
 
+    {overview.subscriptions.length > 0 && <section className="djen-account-switcher" aria-label="Selecionar inscrição da OAB">
+      <div><p className="eyebrow">CARTEIRA EM EXIBIÇÃO</p><strong>{activeSubscription ? activeSubscription.lawyer_name || `OAB/${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "Todas as inscrições"}</strong><span>{activeSubscription ? `Mostrando somente publicações da OAB/${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "Visão consolidada de todas as OABs monitoradas"}</span></div>
+      <div className="djen-account-tabs">
+        {overview.subscriptions.map((subscription) => <button className={activeSubscriptionId === subscription.id ? "active" : ""} key={subscription.id} onClick={() => setActiveSubscriptionId(subscription.id)}>
+          <span>{(subscription.lawyer_name || "OAB").split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
+          <b>{subscription.lawyer_name || "Advogado"}<small>OAB/{subscription.oab_state} {subscription.oab_number}</small></b>
+        </button>)}
+        {overview.subscriptions.length > 1 && <button className={activeSubscriptionId === "all" ? "active" : ""} onClick={() => setActiveSubscriptionId("all")}><span>∑</span><b>Todas<small>Visão consolidada</small></b></button>}
+      </div>
+    </section>}
+
     <section className="metrics-grid djen-metrics">
-      <div className="metric blue"><span>HOJE</span><strong>{overview.stats.today}</strong><small>Publicações de hoje</small></div>
-      <div className="metric orange"><span>NÃO LIDAS</span><strong>{overview.stats.unread}</strong><small>Exigem conferência</small></div>
-      <div className="metric green"><span>VINCULADAS</span><strong>{overview.stats.linked}</strong><small>Ligadas a processos</small></div>
-      <div className="metric blue"><span>TOTAL</span><strong>{overview.stats.total}</strong><small>Publicações armazenadas</small></div>
+      <div className="metric blue"><span>HOJE</span><strong>{visibleStats.today}</strong><small>Publicações de hoje</small></div>
+      <div className="metric orange"><span>NÃO LIDAS</span><strong>{visibleStats.unread}</strong><small>Exigem conferência</small></div>
+      <div className="metric green"><span>VINCULADAS</span><strong>{visibleStats.linked}</strong><small>Ligadas a processos</small></div>
+      <div className="metric blue"><span>TOTAL</span><strong>{visibleStats.total}</strong><small>{activeSubscription ? `OAB/${activeSubscription.oab_state} ${activeSubscription.oab_number}` : "Publicações armazenadas"}</small></div>
     </section>
 
     <section className="toolbar djen-toolbar" aria-label="Filtros das publicações">
@@ -292,7 +327,7 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     </section>
 
     <section className="panel djen-feed">
-      {loading ? <div className="empty-state">Carregando publicações…</div> : overview.subscriptions.length === 0 ? <div className="empty-state"><strong>Cadastre a OAB para começar.</strong><span>Não é necessário informar senha ou certificado digital.</span></div> : overview.publications.length === 0 ? <div className="empty-state"><strong>Nenhuma publicação encontrada.</strong><span>Faça uma consulta ou ajuste os filtros.</span></div> : overview.publications.map((publication) => <button className={`djen-card ${publication.is_read ? "read" : "unread"}`} key={publication.id} onClick={() => void openPublication(publication)}>
+      {loading ? <div className="empty-state">Carregando publicações…</div> : overview.subscriptions.length === 0 ? <div className="empty-state"><strong>Cadastre a OAB para começar.</strong><span>Não é necessário informar senha ou certificado digital.</span></div> : visiblePublications.length === 0 ? <div className="empty-state"><strong>Nenhuma publicação encontrada para esta OAB.</strong><span>Faça uma consulta ou ajuste os filtros.</span></div> : visiblePublications.map((publication) => <button className={`djen-card ${publication.is_read ? "read" : "unread"}`} key={publication.id} onClick={() => void openPublication(publication)}>
         <div className="djen-card-date"><strong>{new Date(`${publication.publication_date}T12:00:00`).getDate()}</strong><span>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(`${publication.publication_date}T12:00:00`))}</span></div>
         <div className="djen-card-copy"><div>{!publication.is_read && <b>NOVA</b>}<span>{publication.tribunal}</span><span>{publication.communication_type}</span>{publication.process && <em>PROCESSO VINCULADO</em>}</div><strong>{publication.process_number_formatted || publication.document_type || "Publicação DJEN"}</strong><small>{publication.court_body || publication.medium}</small><p>{publication.content.slice(0, 260)}{publication.content.length > 260 ? "…" : ""}</p></div>
         <i>LER →</i>
