@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.api.dependencies import WorkspaceAccess, get_workspace_access
 from app.db import get_session
@@ -44,7 +44,15 @@ async def _ingest_items(
     }
     existing = list(
         await session.scalars(
-            select(DjenPublication).where(DjenPublication.workspace_id == workspace_id)
+            select(DjenPublication)
+            .options(
+                load_only(
+                    DjenPublication.id,
+                    DjenPublication.external_id,
+                    DjenPublication.matched_oabs,
+                )
+            )
+            .where(DjenPublication.workspace_id == workspace_id)
         )
     )
     existing_by_external = {item.external_id: item for item in existing}
@@ -81,6 +89,7 @@ async def _ingest_items(
             for recipient in item.get("destinatarios") or []
             if recipient.get("nome")
         ]
+        clean_content = html_to_text(str(item.get("texto") or ""))[:250_000]
         values = {
             "process_id": matched_process.id if matched_process else None,
             "publication_hash": str(item.get("hash") or ""),
@@ -94,7 +103,8 @@ async def _ingest_items(
             "process_number_formatted": str(
                 item.get("numeroprocessocommascara") or item.get("numero_processo") or ""
             ),
-            "content": html_to_text(str(item.get("texto") or ""))[:250_000],
+            "content_preview": clean_content[:600],
+            "content": clean_content,
             "official_link": str(item.get("link") or ""),
             "recipients": recipients,
             "attorneys": attorneys,
@@ -140,7 +150,26 @@ async def _overview(
     )
     statement = (
         select(DjenPublication)
-        .options(selectinload(DjenPublication.process))
+        .options(
+            selectinload(DjenPublication.process),
+            load_only(
+                DjenPublication.id,
+                DjenPublication.external_id,
+                DjenPublication.publication_date,
+                DjenPublication.tribunal,
+                DjenPublication.communication_type,
+                DjenPublication.court_body,
+                DjenPublication.document_type,
+                DjenPublication.medium,
+                DjenPublication.process_number,
+                DjenPublication.process_number_formatted,
+                DjenPublication.content_preview,
+                DjenPublication.matched_oabs,
+                DjenPublication.is_read,
+                DjenPublication.process_id,
+                DjenPublication.created_at,
+            ),
+        )
         .where(DjenPublication.workspace_id == workspace_id)
     )
     if search:
@@ -165,38 +194,29 @@ async def _overview(
         )
     )
     today = datetime.now(OFFICE_TIMEZONE).date()
-    total = await session.scalar(
-        select(func.count()).select_from(DjenPublication).where(
-            DjenPublication.workspace_id == workspace_id
+    stats_row = (
+        await session.execute(
+            select(
+                func.count(DjenPublication.id),
+                func.count(DjenPublication.id).filter(DjenPublication.is_read.is_(False)),
+                func.count(DjenPublication.id).filter(
+                    DjenPublication.publication_date == today
+                ),
+                func.count(DjenPublication.id).filter(
+                    DjenPublication.process_id.is_not(None)
+                ),
+            ).where(DjenPublication.workspace_id == workspace_id)
         )
-    )
-    unread = await session.scalar(
-        select(func.count()).select_from(DjenPublication).where(
-            DjenPublication.workspace_id == workspace_id,
-            DjenPublication.is_read.is_(False),
-        )
-    )
-    today_count = await session.scalar(
-        select(func.count()).select_from(DjenPublication).where(
-            DjenPublication.workspace_id == workspace_id,
-            DjenPublication.publication_date == today,
-        )
-    )
-    linked = await session.scalar(
-        select(func.count()).select_from(DjenPublication).where(
-            DjenPublication.workspace_id == workspace_id,
-            DjenPublication.process_id.is_not(None),
-        )
-    )
+    ).one()
     sync_times = [item.last_synced_at for item in subscriptions if item.last_synced_at]
     return DjenOverview(
         subscriptions=subscriptions,
         publications=publications,
         stats=DjenStats(
-            total=total or 0,
-            unread=unread or 0,
-            today=today_count or 0,
-            linked=linked or 0,
+            total=stats_row[0] or 0,
+            unread=stats_row[1] or 0,
+            today=stats_row[2] or 0,
+            linked=stats_row[3] or 0,
         ),
         last_synced_at=max(sync_times) if sync_times else None,
     )
@@ -341,6 +361,25 @@ async def ingest_djen_from_browser(
     return DjenSyncResult(
         fetched=len(payload.items), created=created, linked=linked, warnings=[]
     )
+
+
+@router.get("/publications/{publication_id}", response_model=DjenPublicationRead)
+async def read_publication(
+    publication_id: UUID,
+    access: WorkspaceAccess = Depends(get_workspace_access),
+    session: AsyncSession = Depends(get_session),
+) -> DjenPublication:
+    publication = await session.scalar(
+        select(DjenPublication)
+        .options(selectinload(DjenPublication.process))
+        .where(
+            DjenPublication.id == publication_id,
+            DjenPublication.workspace_id == access.workspace_id,
+        )
+    )
+    if publication is None:
+        raise HTTPException(status_code=404, detail="Publicação não encontrada.")
+    return publication
 
 
 @router.patch("/publications/{publication_id}/read", response_model=DjenPublicationRead)

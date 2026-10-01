@@ -64,6 +64,7 @@ class DjenPublication(TimestampMixin, Base):
     medium: Mapped[str] = mapped_column(String(100), default="", nullable=False)
     process_number: Mapped[str] = mapped_column(String(50), default="", nullable=False)
     process_number_formatted: Mapped[str] = mapped_column(String(50), default="", nullable=False)
+    content_preview: Mapped[str] = mapped_column(String(600), default="", nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     official_link: Mapped[str] = mapped_column(Text, default="", nullable=False)
     recipients: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)

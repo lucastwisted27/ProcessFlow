@@ -139,7 +139,7 @@ export interface DjenSubscription {
   created_at: string;
 }
 
-export interface DjenPublication {
+export interface DjenPublicationSummary {
   id: string;
   external_id: string;
   publication_date: string;
@@ -150,19 +150,23 @@ export interface DjenPublication {
   medium: string;
   process_number: string;
   process_number_formatted: string;
-  content: string;
-  official_link: string;
-  recipients: string[];
-  attorneys: Array<{ name: string; oab_number: string; oab_state: string }>;
+  content_preview: string;
   matched_oabs: string[];
   is_read: boolean;
   process: { id: string; client: string; number: string } | null;
   created_at: string;
 }
 
+export interface DjenPublication extends DjenPublicationSummary {
+  content: string;
+  official_link: string;
+  recipients: string[];
+  attorneys: Array<{ name: string; oab_number: string; oab_state: string }>;
+}
+
 export interface DjenOverview {
   subscriptions: DjenSubscription[];
-  publications: DjenPublication[];
+  publications: DjenPublicationSummary[];
   stats: { total: number; unread: number; today: number; linked: number };
   last_synced_at: string | null;
 }

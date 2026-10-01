@@ -47,7 +47,7 @@ class DjenProcessReference(BaseModel):
     number: str
 
 
-class DjenPublicationRead(BaseModel):
+class DjenPublicationSummaryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -60,14 +60,18 @@ class DjenPublicationRead(BaseModel):
     medium: str
     process_number: str
     process_number_formatted: str
-    content: str
-    official_link: str
-    recipients: list[str]
-    attorneys: list[dict[str, str]]
+    content_preview: str
     matched_oabs: list[str]
     is_read: bool
     process: DjenProcessReference | None
     created_at: datetime
+
+
+class DjenPublicationRead(DjenPublicationSummaryRead):
+    content: str
+    official_link: str
+    recipients: list[str]
+    attorneys: list[dict[str, str]]
 
 
 class DjenStats(BaseModel):
@@ -79,7 +83,7 @@ class DjenStats(BaseModel):
 
 class DjenOverview(BaseModel):
     subscriptions: list[DjenSubscriptionRead]
-    publications: list[DjenPublicationRead]
+    publications: list[DjenPublicationSummaryRead]
     stats: DjenStats
     last_synced_at: datetime | None
 
