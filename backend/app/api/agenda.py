@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.schemas.agenda import (
 )
 
 router = APIRouter(prefix="/agenda", tags=["agenda"])
+OFFICE_TIMEZONE = ZoneInfo("America/Manaus")
 
 
 async def _get_event(
@@ -86,20 +88,32 @@ async def read_agenda(
             ).order_by(Process.due_date, Process.client)
         )
     )
+    overdue_processes = list(
+        await session.scalars(
+            select(Process).where(
+                Process.workspace_id == access.workspace_id,
+                Process.status != ProcessStatus.COMPLETED,
+                Process.due_date.is_not(None),
+                Process.due_date < datetime.now(OFFICE_TIMEZONE).date(),
+            ).order_by(Process.due_date, Process.client)
+        )
+    )
+
+    def deadline(item: Process) -> ProcessDeadlineRead:
+        assert item.due_date is not None
+        return ProcessDeadlineRead(
+            id=item.id,
+            client=item.client,
+            number=item.number,
+            due_date=datetime.combine(item.due_date, time(hour=12), tzinfo=UTC),
+            next_action=item.next_action,
+            priority=item.priority,
+        )
+
     return AgendaOverview(
         events=events,
-        process_deadlines=[
-            ProcessDeadlineRead(
-                id=item.id,
-                client=item.client,
-                number=item.number,
-                due_date=datetime.combine(item.due_date, time(hour=12), tzinfo=UTC),
-                next_action=item.next_action,
-                priority=item.priority,
-            )
-            for item in processes
-            if item.due_date is not None
-        ],
+        process_deadlines=[deadline(item) for item in processes],
+        overdue_deadlines=[deadline(item) for item in overdue_processes],
     )
 
 

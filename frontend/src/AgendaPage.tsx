@@ -142,7 +142,7 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
   const today = localDateKey(new Date());
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
   const [selectedDate, setSelectedDate] = useState(today);
-  const [overview, setOverview] = useState<AgendaOverview>({ events: [], process_deadlines: [] });
+  const [overview, setOverview] = useState<AgendaOverview>({ events: [], process_deadlines: [], overdue_deadlines: [] });
   const [processes, setProcesses] = useState<ProcessRecord[]>([]);
   const [editing, setEditing] = useState<AgendaEvent | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -279,6 +279,19 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
         <div className="metric red"><span>AUDIÊNCIAS</span><strong>{metrics.hearings}</strong><small>Agendadas no período</small></div>
         <div className="metric green"><span>COMPROMISSOS</span><strong>{metrics.scheduled}</strong><small>Eventos ativos no período</small></div>
       </section>
+      {overview.overdue_deadlines.length > 0 && <section className="panel overdue-deadlines-panel">
+        <header className="panel-head"><div><p className="eyebrow">ATENÇÃO NECESSÁRIA</p><h3>Prazos vencidos dos processos</h3></div><strong>{overview.overdue_deadlines.length}</strong></header>
+        <div className="overdue-deadline-grid">
+          {overview.overdue_deadlines.map((process) => {
+            const overdueDays = Math.max(1, Math.floor((dateFromKey(today).getTime() - dateFromKey(process.due_date.slice(0, 10)).getTime()) / 86_400_000));
+            return <button key={process.id} onClick={() => openProcess(process.id)}>
+              <span>{overdueDays} dia(s) em atraso</span>
+              <strong>{process.client}</strong>
+              <small>{process.number || "Sem número"}{process.next_action ? ` · ${process.next_action}` : ""}</small>
+            </button>;
+          })}
+        </div>
+      </section>}
       <div className="agenda-layout">
         <section className="panel calendar-panel" aria-label="Calendário mensal">
           <header className="calendar-toolbar">

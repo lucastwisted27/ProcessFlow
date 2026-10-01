@@ -75,3 +75,4 @@ class ProcessDeadlineRead(BaseModel):
 class AgendaOverview(BaseModel):
     events: list[AgendaEventRead]
     process_deadlines: list[ProcessDeadlineRead]
+    overdue_deadlines: list[ProcessDeadlineRead]

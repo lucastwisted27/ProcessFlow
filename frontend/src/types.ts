@@ -77,6 +77,7 @@ export interface ProcessDeadline {
 export interface AgendaOverview {
   events: AgendaEvent[];
   process_deadlines: ProcessDeadline[];
+  overdue_deadlines: ProcessDeadline[];
 }
 
 export type FinancialKind = "receita" | "despesa";
