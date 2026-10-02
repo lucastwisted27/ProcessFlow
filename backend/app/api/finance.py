@@ -6,10 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import WorkspaceAccess, get_workspace_access
 from app.db import get_session
-from app.models.enums import InstallmentStatus
+from app.models.enums import FinancialKind, InstallmentFrequency, InstallmentStatus
 from app.models.finance import FinancialEntry, Installment
 from app.repositories.finance import get_financial_entry, list_financial_entries
-from app.schemas.finance import FinancialEntryCreate, FinancialEntryList, FinancialEntryRead
+from app.schemas.finance import (
+    FinancialEntryCreate,
+    FinancialEntryList,
+    FinancialEntryRead,
+    FinancialEntryUpdate,
+    InstallmentUpdate,
+)
 from app.services.installments import build_installments
 
 router = APIRouter(prefix="/financial-entries", tags=["finance"])
@@ -65,6 +71,40 @@ async def create_financial_entry(
     return await get_financial_entry(session, access.workspace_id, entry.id)  # type: ignore[return-value]
 
 
+@router.patch("/{entry_id}", response_model=FinancialEntryRead)
+async def update_financial_entry(
+    entry_id: UUID,
+    payload: FinancialEntryUpdate,
+    access: WorkspaceAccess = Depends(get_workspace_access),
+    session: AsyncSession = Depends(get_session),
+) -> FinancialEntry:
+    entry = await get_financial_entry(session, access.workspace_id, entry_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lançamento não encontrado."
+        )
+    changes = payload.model_dump(exclude_unset=True)
+    if entry.is_installment and changes.get("kind", FinancialKind.INCOME) != FinancialKind.INCOME:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Um recebimento parcelado deve permanecer como receita.",
+        )
+    new_amount = changes.pop("amount", None)
+    for field, value in changes.items():
+        setattr(entry, field, value)
+    if new_amount is not None:
+        entry.amount = new_amount
+        if entry.is_installment and entry.installments:
+            ordered = sorted(entry.installments, key=lambda item: item.number)
+            first_due_date = ordered[0].due_date
+            frequency = entry.frequency or InstallmentFrequency.MONTHLY
+            rebuilt = build_installments(new_amount, len(ordered), first_due_date, frequency)
+            for installment, values in zip(ordered, rebuilt, strict=True):
+                installment.amount = values["amount"]
+    await session.commit()
+    return await get_financial_entry(session, access.workspace_id, entry.id)  # type: ignore[return-value]
+
+
 @router.post(
     "/{entry_id}/installments/{number}/receive",
     response_model=FinancialEntryRead,
@@ -87,6 +127,38 @@ async def receive_installment(
         installment.status = InstallmentStatus.RECEIVED
         installment.received_date = date.today()
         await session.commit()
+    return await get_financial_entry(session, access.workspace_id, entry_id)  # type: ignore[return-value]
+
+
+@router.patch(
+    "/{entry_id}/installments/{number}",
+    response_model=FinancialEntryRead,
+)
+async def update_installment(
+    entry_id: UUID,
+    number: int,
+    payload: InstallmentUpdate,
+    access: WorkspaceAccess = Depends(get_workspace_access),
+    session: AsyncSession = Depends(get_session),
+) -> FinancialEntry:
+    entry = await get_financial_entry(session, access.workspace_id, entry_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lançamento não encontrado."
+        )
+    installment = next((item for item in entry.installments if item.number == number), None)
+    if installment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcela não encontrada.")
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(installment, field, value)
+    if "status" in changes:
+        installment.received_date = (
+            date.today() if changes["status"] == InstallmentStatus.RECEIVED else None
+        )
+    if "amount" in changes:
+        entry.amount = sum((item.amount for item in entry.installments), start=0)
+    await session.commit()
     return await get_financial_entry(session, access.workspace_id, entry_id)  # type: ignore[return-value]
 
 

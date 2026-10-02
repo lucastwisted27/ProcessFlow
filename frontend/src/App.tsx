@@ -306,6 +306,8 @@ interface FinancePageProps {
   workspaceName: string;
 }
 
+type FinanceFilter = "all" | "income" | "expense" | "balance" | "pending";
+
 function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePageProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
@@ -313,6 +315,11 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [filter, setFilter] = useState<FinanceFilter>("all");
+  const [selectedEntry, setSelectedEntry] = useState<FinancialEntry | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({
     kind: "receita" as FinancialKind,
     entry_date: today,
@@ -326,6 +333,14 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
     first_due_date: today,
     first_received: true,
   });
+  const [editDraft, setEditDraft] = useState({
+    kind: "receita" as FinancialKind,
+    entry_date: today,
+    description: "",
+    category: "",
+    amount: "",
+    notes: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -336,6 +351,9 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
         workspaceId,
       });
       setEntries(data.items);
+      setSelectedEntry((current) => (
+        current ? data.items.find((item) => item.id === current.id) ?? null : null
+      ));
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível carregar o financeiro.");
@@ -365,6 +383,45 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
     }
     return { income, expense, balance: income - expense, pending, overdue };
   }, [entries, today]);
+
+  const filteredEntries = useMemo(() => entries.filter((entry) => {
+    if (filter === "income") return entry.kind === "receita";
+    if (filter === "expense") return entry.kind === "despesa";
+    if (filter === "pending") {
+      return entry.installments.some((installment) => installment.status === "pendente");
+    }
+    if (filter === "balance") {
+      return entry.kind === "despesa" || !entry.is_installment
+        || entry.installments.some((installment) => installment.status === "recebida");
+    }
+    return true;
+  }), [entries, filter]);
+
+  const filterTitle: Record<FinanceFilter, string> = {
+    all: "Histórico financeiro",
+    income: "Receitas",
+    expense: "Despesas",
+    balance: "Movimentações que compõem o saldo",
+    pending: "Valores a receber",
+  };
+
+  function selectFilter(next: FinanceFilter) {
+    setFilter((current) => current === next ? "all" : next);
+  }
+
+  function openEntry(entry: FinancialEntry) {
+    setSelectedEntry(entry);
+    setEditDraft({
+      kind: entry.kind,
+      entry_date: entry.entry_date,
+      description: entry.description,
+      category: entry.category,
+      amount: entry.amount,
+      notes: entry.notes,
+    });
+    setEditing(false);
+    setConfirmingDelete(false);
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -406,22 +463,85 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
     }
   }
 
+  async function updateEntry(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedEntry) return;
+    setBusy(true);
+    try {
+      const updated = await apiRequest<FinancialEntry>(
+        `/api/v1/financial-entries/${selectedEntry.id}`,
+        {
+          method: "PATCH",
+          accessToken,
+          workspaceId,
+          body: JSON.stringify({ ...editDraft, amount: Number(editDraft.amount) }),
+        },
+      );
+      setEntries((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setSelectedEntry(updated);
+      setEditing(false);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível editar o lançamento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateInstallment(entryId: string, number: number, status: "pendente" | "recebida") {
+    setBusy(true);
+    try {
+      const updated = await apiRequest<FinancialEntry>(
+        `/api/v1/financial-entries/${entryId}/installments/${number}`,
+        { method: "PATCH", accessToken, workspaceId, body: JSON.stringify({ status }) },
+      );
+      setEntries((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setSelectedEntry(updated);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a parcela.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteEntry() {
+    if (!selectedEntry) return;
+    setBusy(true);
+    try {
+      await apiRequest<void>(`/api/v1/financial-entries/${selectedEntry.id}`, {
+        method: "DELETE",
+        accessToken,
+        workspaceId,
+      });
+      setEntries((current) => current.filter((item) => item.id !== selectedEntry.id));
+      setSelectedEntry(null);
+      setConfirmingDelete(false);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível excluir o lançamento.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <>
     <section className="page-head"><div><p className="eyebrow">FINANCEIRO COMPARTILHADO</p><h2>{workspaceName}</h2><p>Todos os membros autorizados veem os mesmos lançamentos e parcelas.</p></div><button className="primary-btn" onClick={() => setShowForm(true)}>＋ Nova movimentação</button></section>
-    <section className="metrics-grid">
-      <div className="metric blue"><span>RECEITAS</span><strong>{money(summary.income)}</strong><small>Valores efetivamente recebidos</small></div>
-      <div className="metric red"><span>DESPESAS</span><strong>{money(summary.expense)}</strong><small>Saídas registradas</small></div>
-      <div className={`metric ${summary.balance >= 0 ? "green" : "red"}`}><span>SALDO</span><strong>{money(summary.balance)}</strong><small>Receitas menos despesas</small></div>
-      <div className="metric orange"><span>A RECEBER</span><strong>{money(summary.pending)}</strong><small>{summary.overdue} parcela(s) atrasada(s)</small></div>
+    <section className="metrics-grid" aria-label="Filtros financeiros">
+      <button className={`metric finance-metric blue ${filter === "income" ? "active" : ""}`} aria-pressed={filter === "income"} onClick={() => selectFilter("income")}><span>RECEITAS</span><strong>{money(summary.income)}</strong><small>Valores efetivamente recebidos</small><em>Ver receitas →</em></button>
+      <button className={`metric finance-metric red ${filter === "expense" ? "active" : ""}`} aria-pressed={filter === "expense"} onClick={() => selectFilter("expense")}><span>DESPESAS</span><strong>{money(summary.expense)}</strong><small>Saídas registradas</small><em>Ver despesas →</em></button>
+      <button className={`metric finance-metric ${summary.balance >= 0 ? "green" : "red"} ${filter === "balance" ? "active" : ""}`} aria-pressed={filter === "balance"} onClick={() => selectFilter("balance")}><span>SALDO</span><strong>{money(summary.balance)}</strong><small>Receitas menos despesas</small><em>Ver composição →</em></button>
+      <button className={`metric finance-metric orange ${filter === "pending" ? "active" : ""}`} aria-pressed={filter === "pending"} onClick={() => selectFilter("pending")}><span>A RECEBER</span><strong>{money(summary.pending)}</strong><small>{summary.overdue} parcela(s) atrasada(s)</small><em>Ver pendências →</em></button>
     </section>
     {error && <div className="error-banner" role="alert">{error}</div>}
     <section className="panel finance-list-panel">
-      <header className="panel-head"><div><p className="eyebrow">MOVIMENTAÇÕES</p><h3>Histórico financeiro</h3></div><button className="ghost-btn" onClick={() => void load()}>↻ Atualizar</button></header>
-      {loading ? <div className="empty-state">Carregando financeiro…</div> : entries.length === 0 ? <div className="empty-state"><strong>Nenhuma movimentação cadastrada.</strong><span>Cadastre a primeira receita ou despesa.</span></div> : entries.map((entry) => <article className="finance-entry" key={entry.id}>
+      <header className="panel-head"><div><p className="eyebrow">MOVIMENTAÇÕES · {filteredEntries.length}</p><h3>{filterTitle[filter]}</h3></div><div className="finance-panel-actions">{filter !== "all" && <button className="link-button" onClick={() => setFilter("all")}>Limpar filtro</button>}<button className="ghost-btn" onClick={() => void load()}>↻ Atualizar</button></div></header>
+      {loading ? <div className="empty-state">Carregando financeiro…</div> : entries.length === 0 ? <div className="empty-state"><strong>Nenhuma movimentação cadastrada.</strong><span>Cadastre a primeira receita ou despesa.</span></div> : filteredEntries.length === 0 ? <div className="empty-state"><strong>Nenhum lançamento neste filtro.</strong><span>Clique novamente no card selecionado para ver todo o histórico.</span></div> : filteredEntries.map((entry) => <article className="finance-entry finance-entry-clickable" key={entry.id} role="button" tabIndex={0} onClick={() => openEntry(entry)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) openEntry(entry); }}>
         <div><strong>{entry.description}</strong><span>{formatDate(entry.entry_date)} · {entry.category}</span></div>
         <span className={`kind ${entry.kind}`}>{entry.kind === "receita" ? "Receita" : "Despesa"}</span>
         <strong className="entry-value">{money(entry.amount)}</strong>
-        {entry.is_installment && <div className="installment-strip">{entry.installments.map((installment) => <div key={installment.id} className={installment.status}><span>{installment.number}/{installment.total_installments} · {formatDate(installment.due_date)} · {money(installment.amount)}</span>{installment.status === "pendente" ? <button onClick={() => void receive(entry.id, installment.number)}>Receber</button> : <b>Recebida</b>}</div>)}</div>}
+        <span className="finance-entry-open">Ver detalhes e editar →</span>
+        {entry.is_installment && <div className="installment-strip">{entry.installments.map((installment) => <div key={installment.id} className={installment.status}><span>{installment.number}/{installment.total_installments} · {formatDate(installment.due_date)} · {money(installment.amount)}</span>{installment.status === "pendente" ? <button onClick={(event) => { event.stopPropagation(); void receive(entry.id, installment.number); }}>Receber</button> : <b>Recebida</b>}</div>)}</div>}
       </article>)}
     </section>
     {showForm && <div className="modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><section className="modal-card" role="dialog" aria-modal="true"><header className="modal-head"><div><p className="eyebrow">FINANCEIRO</p><h2>Nova movimentação</h2></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label="Fechar">×</button></header><form onSubmit={save}><div className="form-grid">
@@ -434,6 +554,25 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
       {draft.is_installment && <><label>Parcelas<input type="number" min="2" max="120" value={draft.installment_count} onChange={(event) => setDraft({ ...draft, installment_count: Number(event.target.value) })} /></label><label>Periodicidade<select value={draft.frequency} onChange={(event) => setDraft({ ...draft, frequency: event.target.value as InstallmentFrequency })}><option value="mensal">Mensal</option><option value="quinzenal">Quinzenal</option><option value="semanal">Semanal</option></select></label><label>Primeira parcela<input type="date" value={draft.first_due_date} onChange={(event) => setDraft({ ...draft, first_due_date: event.target.value })} /></label><label>Primeira já recebida?<select value={draft.first_received ? "sim" : "nao"} onChange={(event) => setDraft({ ...draft, first_received: event.target.value === "sim" })}><option value="sim">Sim</option><option value="nao">Não</option></select></label></>}
       <label className="full">Observações<textarea rows={3} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
     </div><footer className="modal-actions"><button type="button" className="ghost-btn" onClick={() => setShowForm(false)}>Cancelar</button><button className="primary-btn" disabled={saving}>{saving ? "Salvando…" : "Salvar movimentação"}</button></footer></form></section></div>}
+    {selectedEntry && <div className="modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelectedEntry(null)}><section className="modal-card finance-detail-modal" role="dialog" aria-modal="true"><header className="modal-head"><div><p className="eyebrow">DETALHES FINANCEIROS</p><h2>{editing ? "Editar movimentação" : selectedEntry.description}</h2></div><button className="icon-button" onClick={() => setSelectedEntry(null)} aria-label="Fechar">×</button></header>
+      {editing ? <form onSubmit={updateEntry}><div className="form-grid">
+        <label>Tipo<select value={editDraft.kind} disabled={selectedEntry.is_installment} onChange={(event) => setEditDraft({ ...editDraft, kind: event.target.value as FinancialKind })}><option value="receita">Receita</option><option value="despesa">Despesa</option></select></label>
+        <label>Data<input type="date" required value={editDraft.entry_date} onChange={(event) => setEditDraft({ ...editDraft, entry_date: event.target.value })} /></label>
+        <label className="full">Descrição<input required value={editDraft.description} onChange={(event) => setEditDraft({ ...editDraft, description: event.target.value })} /></label>
+        <label>Categoria<input required value={editDraft.category} onChange={(event) => setEditDraft({ ...editDraft, category: event.target.value })} /></label>
+        <label>Valor total<input type="number" min="0.01" step="0.01" required value={editDraft.amount} onChange={(event) => setEditDraft({ ...editDraft, amount: event.target.value })} /></label>
+        {selectedEntry.is_installment && <p className="form-hint full">Ao alterar o valor total, o sistema redistribui o valor entre as parcelas existentes.</p>}
+        <label className="full">Observações<textarea rows={4} value={editDraft.notes} onChange={(event) => setEditDraft({ ...editDraft, notes: event.target.value })} /></label>
+      </div><footer className="modal-actions"><button type="button" className="ghost-btn" onClick={() => setEditing(false)}>Cancelar</button><button className="primary-btn" disabled={busy}>{busy ? "Salvando…" : "Salvar alterações"}</button></footer></form> : <>
+        <div className="finance-detail-body">
+          <div className="process-detail-grid"><div><span>TIPO</span><strong>{selectedEntry.kind === "receita" ? "Receita" : "Despesa"}</strong></div><div><span>VALOR TOTAL</span><strong>{money(selectedEntry.amount)}</strong></div><div><span>DATA</span><strong>{formatDate(selectedEntry.entry_date)}</strong></div><div><span>CATEGORIA</span><strong>{selectedEntry.category}</strong></div></div>
+          {selectedEntry.notes && <div className="process-detail-section"><span>OBSERVAÇÕES</span><p>{selectedEntry.notes}</p></div>}
+          {selectedEntry.is_installment && <div className="finance-installments"><span>PARCELAS</span>{selectedEntry.installments.map((installment) => <div key={installment.id} className={installment.due_date < today && installment.status === "pendente" ? "overdue" : ""}><div><strong>{installment.number}/{installment.total_installments} · {money(installment.amount)}</strong><small>Vencimento: {formatDate(installment.due_date)}</small></div><button className={installment.status === "recebida" ? "ghost-btn" : "primary-btn"} disabled={busy} onClick={() => void updateInstallment(selectedEntry.id, installment.number, installment.status === "recebida" ? "pendente" : "recebida")}>{installment.status === "recebida" ? "Desfazer recebimento" : "Marcar como recebida"}</button></div>)}</div>}
+          {confirmingDelete && <div className="delete-confirmation" role="alert"><div><strong>Excluir esta movimentação?</strong><span>As parcelas vinculadas também serão excluídas. Essa ação não pode ser desfeita.</span></div><div><button className="ghost-btn" onClick={() => setConfirmingDelete(false)}>Cancelar</button><button className="danger-btn" disabled={busy} onClick={() => void deleteEntry()}>{busy ? "Excluindo…" : "Excluir definitivamente"}</button></div></div>}
+        </div>
+        {!confirmingDelete && <footer className="modal-actions process-detail-actions"><button className="danger-link" onClick={() => setConfirmingDelete(true)}>Excluir</button><div><button className="primary-btn" onClick={() => setEditing(true)}>Editar movimentação</button></div></footer>}
+      </>}
+    </section></div>}
   </>;
 }
 
