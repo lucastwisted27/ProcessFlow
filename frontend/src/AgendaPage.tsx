@@ -33,6 +33,8 @@ type CalendarItem =
   | { kind: "event"; dateKey: string; event: AgendaEvent }
   | { kind: "deadline"; dateKey: string; process: AgendaOverview["process_deadlines"][number] };
 
+type AgendaMetric = "today" | "deadlines" | "hearings" | "scheduled";
+
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTH_FORMAT = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
@@ -92,20 +94,36 @@ function EventModal({
   event,
   date,
   processes,
+  processesLoading,
+  processesError,
   busy,
   error,
   onClose,
   onSave,
+  onReloadProcesses,
 }: {
   event: AgendaEvent | null;
   date: string;
   processes: ProcessRecord[];
+  processesLoading: boolean;
+  processesError: string;
   busy: boolean;
   error: string;
   onClose: () => void;
   onSave: (draft: EventDraft) => Promise<void>;
+  onReloadProcesses: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState(() => draftFor(date, event ?? undefined));
+  const [processSearch, setProcessSearch] = useState("");
+  const filteredProcesses = useMemo(() => {
+    const search = processSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!search) return processes;
+    return processes.filter((process) => (
+      `${process.client} ${process.number} ${process.process_type}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(search)
+    ));
+  }, [processSearch, processes]);
 
   async function submit(submitEvent: FormEvent) {
     submitEvent.preventDefault();
@@ -124,7 +142,9 @@ function EventModal({
           <div className="form-grid">
             <label className="full">Título<input autoFocus required value={draft.title} onChange={(inputEvent) => setDraft({ ...draft, title: inputEvent.target.value })} placeholder="Ex.: Audiência de conciliação" /></label>
             <label>Tipo<select value={draft.event_type} onChange={(inputEvent) => setDraft({ ...draft, event_type: inputEvent.target.value as AgendaEventType })}><option>Audiência</option><option>Reunião</option><option>Compromisso</option><option>Lembrete</option></select></label>
-            <label>Processo (opcional)<select value={draft.process_id} onChange={(inputEvent) => setDraft({ ...draft, process_id: inputEvent.target.value })}><option value="">Sem processo vinculado</option>{processes.map((process) => <option key={process.id} value={process.id}>{process.client} {process.number ? `· ${process.number}` : ""}</option>)}</select></label>
+            <label>Buscar processo<input value={processSearch} onChange={(inputEvent) => setProcessSearch(inputEvent.target.value)} placeholder="Cliente ou número do processo" /></label>
+            <label className="full">Processo (opcional)<select value={draft.process_id} disabled={processesLoading} onChange={(inputEvent) => setDraft({ ...draft, process_id: inputEvent.target.value })}><option value="">{processesLoading ? "Carregando processos…" : "Sem processo vinculado"}</option>{filteredProcesses.map((process) => <option key={process.id} value={process.id}>{process.client} {process.number ? `· ${process.number}` : ""}</option>)}</select></label>
+            {processesError && <div className="agenda-process-error full"><span>{processesError}</span><button type="button" className="link-button" onClick={() => void onReloadProcesses()}>Tentar carregar novamente</button></div>}
             <label>Data<input type="date" required value={draft.date} onChange={(inputEvent) => setDraft({ ...draft, date: inputEvent.target.value })} /></label>
             <label>Horário inicial<input type="time" required value={draft.time} onChange={(inputEvent) => setDraft({ ...draft, time: inputEvent.target.value })} /></label>
             <label>Horário final (opcional)<input type="time" value={draft.end_time} onChange={(inputEvent) => setDraft({ ...draft, end_time: inputEvent.target.value })} /></label>
@@ -146,9 +166,12 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
   const [processes, setProcesses] = useState<ProcessRecord[]>([]);
   const [editing, setEditing] = useState<AgendaEvent | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [processesLoading, setProcessesLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [processesError, setProcessesError] = useState("");
   const [modalError, setModalError] = useState("");
+  const [activeMetric, setActiveMetric] = useState<AgendaMetric | null>(null);
 
   const calendarStart = useMemo(() => startOfCalendar(month), [month]);
   const days = useMemo(() => Array.from({ length: 42 }, (_, index) => addDays(calendarStart, index)), [calendarStart]);
@@ -156,16 +179,14 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
   const calendarStartKey = localDateKey(calendarStart);
   const calendarEndKey = localDateKey(calendarEnd);
 
-  const load = useCallback(async () => {
+  const loadAgenda = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ start: localDateKey(calendarStart), end: localDateKey(calendarEnd) });
-      const [agenda, processList] = await Promise.all([
-        apiRequest<AgendaOverview>(`/api/v1/agenda?${params}`, { method: "GET", accessToken, workspaceId }),
-        apiRequest<ProcessList>("/api/v1/processes?limit=200", { method: "GET", accessToken, workspaceId }),
-      ]);
+      const agenda = await apiRequest<AgendaOverview>(`/api/v1/agenda?${params}`, {
+        method: "GET", accessToken, workspaceId,
+      });
       setOverview(agenda);
-      setProcesses(processList.items);
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível carregar a agenda.");
@@ -174,7 +195,25 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
     }
   }, [accessToken, calendarEnd, calendarStart, workspaceId]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadProcesses = useCallback(async () => {
+    setProcessesLoading(true);
+    try {
+      const processList = await apiRequest<ProcessList>("/api/v1/processes?limit=200", {
+        method: "GET", accessToken, workspaceId,
+      });
+      setProcesses(processList.items);
+      setProcessesError("");
+    } catch (reason) {
+      setProcessesError(reason instanceof Error
+        ? reason.message
+        : "Não foi possível carregar os processos para vinculação.");
+    } finally {
+      setProcessesLoading(false);
+    }
+  }, [accessToken, workspaceId]);
+
+  useEffect(() => { void loadAgenda(); }, [loadAgenda]);
+  useEffect(() => { void loadProcesses(); }, [loadProcesses]);
 
   const visibleEvents = overview.events.filter((event) => {
     const key = localDateKey(new Date(event.starts_at));
@@ -197,6 +236,23 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
     deadlines: overview.process_deadlines.length,
     hearings: activeEvents.filter((event) => event.event_type === "Audiência").length,
     scheduled: activeEvents.length,
+  };
+  const metricTitles: Record<AgendaMetric, string> = {
+    today: "Itens de hoje",
+    deadlines: "Prazos do período",
+    hearings: "Audiências agendadas",
+    scheduled: "Compromissos ativos",
+  };
+  const metricItems: Record<AgendaMetric, CalendarItem[]> = {
+    today: itemsByDay.get(today) ?? [],
+    deadlines: overview.process_deadlines.map((process) => ({
+      kind: "deadline", dateKey: process.due_date.slice(0, 10), process,
+    })),
+    hearings: activeEvents
+      .filter((event) => event.event_type === "Audiência")
+      .map((event) => ({ kind: "event", dateKey: localDateKey(new Date(event.starts_at)), event })),
+    scheduled: activeEvents
+      .map((event) => ({ kind: "event", dateKey: localDateKey(new Date(event.starts_at)), event })),
   };
   const todayDate = dateFromKey(today);
   const upcomingDeadlines = processes
@@ -224,6 +280,10 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
         location: draft.location.trim(),
         notes: draft.notes.trim(),
       };
+      const availabilityParams = new URLSearchParams({ start: draft.date, end: draft.date });
+      await apiRequest<AgendaOverview>(`/api/v1/agenda?${availabilityParams}`, {
+        method: "GET", accessToken, workspaceId,
+      });
       await apiRequest<AgendaEvent>(editing
         ? `/api/v1/agenda/${editing.id}`
         : "/api/v1/agenda", {
@@ -234,7 +294,7 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
       });
       setSelectedDate(draft.date);
       setEditing(undefined);
-      await load();
+      await loadAgenda();
     } catch (reason) {
       setModalError(reason instanceof Error ? reason.message : "Não foi possível salvar o compromisso.");
     } finally {
@@ -247,7 +307,7 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
       await apiRequest<AgendaEvent>(`/api/v1/agenda/${event.id}`, {
         method: "PATCH", accessToken, workspaceId, body: JSON.stringify({ status }),
       });
-      await load();
+      await loadAgenda();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o compromisso.");
     }
@@ -257,7 +317,7 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
     if (!window.confirm(`Excluir “${event.title}” da agenda?`)) return;
     try {
       await apiRequest<void>(`/api/v1/agenda/${event.id}`, { method: "DELETE", accessToken, workspaceId });
-      await load();
+      await loadAgenda();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível excluir o compromisso.");
     }
@@ -267,6 +327,13 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
     const target = new Date(month.getFullYear(), month.getMonth() + offset, 1, 12);
     setMonth(target);
     setSelectedDate(localDateKey(target));
+  }
+
+  function focusCalendarDate(dateKey: string) {
+    const target = dateFromKey(dateKey);
+    setMonth(new Date(target.getFullYear(), target.getMonth(), 1, 12));
+    setSelectedDate(dateKey);
+    setActiveMetric(null);
   }
 
   function openProcess(id: string) {
@@ -280,13 +347,14 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
         <div><p className="eyebrow">AGENDA COMPARTILHADA</p><h2>{workspaceName}</h2><p>Audiências, compromissos e prazos dos processos no mesmo calendário.</p></div>
         <button className="primary-btn" onClick={() => { setModalError(""); setEditing(null); }}>＋ Novo compromisso</button>
       </section>
-      {error && <div className="error-banner" role="alert">{error}</div>}
+      {error && <div className="error-banner agenda-load-error" role="alert"><span>{error}</span><button className="ghost-btn" onClick={() => void loadAgenda()}>↻ Tentar novamente</button></div>}
+      {processesError && !error && <div className="agenda-process-warning" role="status"><span>A agenda está disponível, mas a lista para vincular processos não carregou.</span><button className="link-button" onClick={() => void loadProcesses()}>Carregar processos novamente</button></div>}
       {metrics.today > 0 && <div className="agenda-today-alert" role="status">Hoje há <strong>{metrics.today} item(ns)</strong> na agenda do escritório.</div>}
       <section className="metrics-grid agenda-metrics">
-        <div className="metric blue"><span>HOJE</span><strong>{metrics.today}</strong><small>Item(ns) para hoje</small></div>
-        <div className="metric orange"><span>PRAZOS</span><strong>{metrics.deadlines}</strong><small>No período exibido</small></div>
-        <div className="metric red"><span>AUDIÊNCIAS</span><strong>{metrics.hearings}</strong><small>Agendadas no período</small></div>
-        <div className="metric green"><span>COMPROMISSOS</span><strong>{metrics.scheduled}</strong><small>Eventos ativos no período</small></div>
+        <button className="metric agenda-metric-button blue" onClick={() => setActiveMetric("today")}><span>HOJE</span><strong>{metrics.today}</strong><small>Item(ns) para hoje</small><em>Ver itens →</em></button>
+        <button className="metric agenda-metric-button orange" onClick={() => setActiveMetric("deadlines")}><span>PRAZOS</span><strong>{metrics.deadlines}</strong><small>No período exibido</small><em>Ver prazos →</em></button>
+        <button className="metric agenda-metric-button red" onClick={() => setActiveMetric("hearings")}><span>AUDIÊNCIAS</span><strong>{metrics.hearings}</strong><small>Agendadas no período</small><em>Ver audiências →</em></button>
+        <button className="metric agenda-metric-button green" onClick={() => setActiveMetric("scheduled")}><span>COMPROMISSOS</span><strong>{metrics.scheduled}</strong><small>Eventos ativos no período</small><em>Ver compromissos →</em></button>
       </section>
       <section className={`panel upcoming-deadlines-panel ${upcomingDeadlines.length > 0 ? "has-deadlines" : "clear"}`}>
         <header className="panel-head">
@@ -358,7 +426,10 @@ export function AgendaPage({ accessToken, workspaceId, workspaceName, onOpenProc
           <footer className="agenda-legend"><span><i className="deadline-dot" /> Prazo de processo</span><span><i className="event-dot agendado" /> Compromisso</span></footer>
         </section>
       </div>
-      {editing !== undefined && <EventModal key={editing?.id ?? `new-${selectedDate}`} event={editing} date={selectedDate} processes={processes} busy={saving} error={modalError} onClose={() => setEditing(undefined)} onSave={saveEvent} />}
+      {activeMetric && <div className="modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setActiveMetric(null)}><section className="modal-card agenda-metric-modal" role="dialog" aria-modal="true"><header className="modal-head"><div><p className="eyebrow">RESUMO DA AGENDA</p><h2>{metricTitles[activeMetric]}</h2><span>{metricItems[activeMetric].length} item(ns) encontrado(s)</span></div><button className="icon-button" onClick={() => setActiveMetric(null)} aria-label="Fechar">×</button></header><div className="agenda-metric-list">
+        {metricItems[activeMetric].length === 0 ? <div className="agenda-empty"><strong>Nenhum item encontrado.</strong><span>Não há registros deste tipo no período exibido.</span></div> : metricItems[activeMetric].map((item) => item.kind === "deadline" ? <button key={`metric-deadline-${item.process.id}`} onClick={() => { setActiveMetric(null); openProcess(item.process.id); }}><div><span>PRAZO · {dateFromKey(item.dateKey).toLocaleDateString("pt-BR")}</span><strong>{item.process.client}</strong><small>{item.process.number || "Sem número"}{item.process.next_action ? ` · ${item.process.next_action}` : ""}</small></div><i>Abrir processo →</i></button> : <button key={`metric-event-${item.event.id}`} onClick={() => focusCalendarDate(item.dateKey)}><div><span>{item.event.event_type} · {dateFromKey(item.dateKey).toLocaleDateString("pt-BR")}</span><strong>{item.event.title}</strong><small>{TIME_FORMAT.format(new Date(item.event.starts_at))}{item.event.process ? ` · ${item.event.process.client}` : ""}</small></div><i>Ver no calendário →</i></button>)}
+      </div></section></div>}
+      {editing !== undefined && <EventModal key={editing?.id ?? `new-${selectedDate}`} event={editing} date={selectedDate} processes={processes} processesLoading={processesLoading} processesError={processesError} busy={saving} error={modalError} onClose={() => setEditing(undefined)} onSave={saveEvent} onReloadProcesses={loadProcesses} />}
     </>
   );
 }

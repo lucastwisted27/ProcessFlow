@@ -6,7 +6,7 @@ interface RequestOptions extends RequestInit {
 }
 
 const RETRYABLE_STATUS_CODES = new Set([502, 503, 504]);
-const RETRY_DELAYS_MS = [1_200, 2_500];
+const RETRY_DELAYS_MS = [1_200, 3_000, 6_000];
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
