@@ -48,6 +48,8 @@ class AgendaEventUpdate(BaseModel):
 
 
 class AgendaProcessReference(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     client: str
     number: str

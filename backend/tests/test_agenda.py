@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from app.models.enums import AgendaEventType
-from app.schemas.agenda import AgendaEventCreate, AgendaEventUpdate
+from app.schemas.agenda import AgendaEventCreate, AgendaEventUpdate, AgendaProcessReference
 
 
 def test_agenda_event_accepts_optional_end_and_process() -> None:
@@ -35,3 +37,14 @@ def test_agenda_update_distinguishes_omitted_and_null_process() -> None:
 
     assert "process_id" not in omitted.model_dump(exclude_unset=True)
     assert unlinked.model_dump(exclude_unset=True)["process_id"] is None
+
+
+def test_agenda_process_reference_accepts_orm_attributes() -> None:
+    process_id = uuid4()
+    process = SimpleNamespace(id=process_id, client="Cliente Teste", number="0001234-56")
+
+    reference = AgendaProcessReference.model_validate(process)
+
+    assert reference.id == process_id
+    assert reference.client == "Cliente Teste"
+    assert reference.number == "0001234-56"
