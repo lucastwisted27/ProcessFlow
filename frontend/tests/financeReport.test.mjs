@@ -31,7 +31,10 @@ test("ano completo soma meses sem antecipar parcelas pendentes", () => {
   assert.equal(year.income, 10000);
   assert.equal(year.pending, 20000);
   assert.equal(year.overdue, 10000);
-  assert.deepEqual(financialYears(entries, 2026), [2026, 2025]);
+  const years = financialYears(entries, 2026);
+  assert.equal(years[0], 2026);
+  assert.ok(years.includes(2025));
+  assert.equal(years.at(-1), 2000);
 });
 
 test("todos os anos mantém os totais gerais", () => {

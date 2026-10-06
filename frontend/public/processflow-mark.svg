@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">ProcessFlow</title>
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#4592ff"/>
-      <stop offset="1" stop-color="#2155dc"/>
+    <linearGradient id="background" x1="8" y1="5" x2="56" y2="59" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4b95ff"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="30" y1="29" x2="45" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b9fff0"/>
+      <stop offset="1" stop-color="#63e6be"/>
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="17" fill="url(#background)"/>
-  <path d="M22 47V19h15c8 0 13 5 13 12S45 43 37 43H28" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="48" cy="44" r="4" fill="#8debd5"/>
+  <path d="M17 14h19.5C46 14 52 19.5 52 28.5S46 43 36.5 43H27v7H17V14Zm10 9v11h9c3.8 0 6-2 6-5.5S39.8 23 36 23h-9Z" fill="#fff"/>
+  <path d="M31 28.5h13m-4-4 4 4-4 4" fill="none" stroke="url(#flow)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

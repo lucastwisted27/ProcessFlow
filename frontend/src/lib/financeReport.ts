@@ -33,7 +33,8 @@ function matchesPeriod(date: string, period: FinancePeriod): boolean {
 }
 
 export function financialYears(entries: FinancialEntry[], currentYear: number): number[] {
-  const years = new Set<number>([currentYear]);
+  const years = new Set<number>();
+  for (let year = currentYear; year >= 2000; year -= 1) years.add(year);
   for (const entry of entries) {
     years.add(Number(entry.entry_date.slice(0, 4)));
     for (const installment of entry.installments) {

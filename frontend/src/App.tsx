@@ -409,6 +409,16 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
     setConfirmingDelete(false);
   }
 
+  function openEntryFormForPeriod() {
+    const now = new Date();
+    const year = reportYear ?? now.getFullYear();
+    const month = reportMonth ?? (year === now.getFullYear() ? now.getMonth() + 1 : 1);
+    const useToday = year === now.getFullYear() && month === now.getMonth() + 1;
+    const date = `${year}-${String(month).padStart(2, "0")}-${useToday ? String(now.getDate()).padStart(2, "0") : "01"}`;
+    setDraft((current) => ({ ...current, entry_date: date, first_due_date: date }));
+    setShowForm(true);
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -515,7 +525,7 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
     <section className="page-head"><div><p className="eyebrow">FINANCEIRO COMPARTILHADO</p><h2>{workspaceName}</h2><p>Todos os membros autorizados veem os mesmos lançamentos e parcelas.</p></div><button className="primary-btn" onClick={() => setShowForm(true)}>＋ Nova movimentação</button></section>
     <section className="finance-period panel" aria-label="Período do relatório financeiro">
       <div><p className="eyebrow">ACOMPANHAMENTO FINANCEIRO</p><h3>{reportYear === null ? "Todo o período" : reportMonth === null ? `Ano de ${reportYear}` : `${FINANCE_MONTHS[reportMonth - 1]} de ${reportYear}`}</h3><p>Recebimentos pela data em que entraram; despesas pela data do lançamento; pendências pelo vencimento.</p></div>
-      <div className="finance-period-controls"><label>Ano<select value={reportYear ?? ""} onChange={(event) => { setReportYear(event.target.value ? Number(event.target.value) : null); setReportMonth(null); }}><option value="">Todos os anos</option>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><label>Mês<select value={reportMonth ?? ""} disabled={reportYear === null} onChange={(event) => setReportMonth(event.target.value ? Number(event.target.value) : null)}><option value="">Ano inteiro</option>{FINANCE_MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label></div>
+      <div className="finance-period-controls"><label>Ano<select value={reportYear ?? ""} onChange={(event) => { setReportYear(event.target.value ? Number(event.target.value) : null); setReportMonth(null); }}><option value="">Todos os anos</option>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><label>Mês<select value={reportMonth ?? ""} disabled={reportYear === null} onChange={(event) => setReportMonth(event.target.value ? Number(event.target.value) : null)}><option value="">Ano inteiro</option>{FINANCE_MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label><button type="button" className="ghost-btn" onClick={openEntryFormForPeriod}>＋ Lançar neste período</button></div>
     </section>
     <section className="metrics-grid" aria-label="Filtros financeiros">
       <button className={`metric finance-metric blue ${filter === "income" ? "active" : ""}`} aria-pressed={filter === "income"} onClick={() => selectFilter("income")}><span>RECEBIDO</span><strong>{money(report.income / 100)}</strong><small>Valores efetivamente recebidos</small><em>Ver recebimentos →</em></button>
