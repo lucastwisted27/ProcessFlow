@@ -7,6 +7,7 @@ import { DashboardPage } from "./DashboardPage";
 import { DataPage } from "./DataPage";
 import { DjenPage } from "./DjenPage";
 import { apiRequest } from "./lib/api";
+import { buildFinanceReport, financialYears } from "./lib/financeReport";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import type {
   FinancialEntry,
@@ -60,7 +61,7 @@ function ConfigurationNotice() {
   return (
     <main className="centered-page">
       <section className="auth-card">
-        <div className="brand-mark">P</div>
+        <div className="brand-mark"><img src="/processflow-mark.svg" alt="" /></div>
         <p className="eyebrow">CONFIGURAÇÃO NECESSÁRIA</p>
         <h1>Conecte o ProcessFlow ao Supabase</h1>
         <p>
@@ -101,7 +102,7 @@ function AuthPanel() {
     <main className="centered-page">
       <section className="auth-card">
         <div className="brand-lockup">
-          <div className="brand-mark">P</div>
+          <div className="brand-mark"><img src="/processflow-mark.svg" alt="" /></div>
           <div><strong>ProcessFlow</strong><span>Gestão online compartilhada</span></div>
         </div>
         <p className="eyebrow">ACESSO SEGURO</p>
@@ -307,6 +308,7 @@ interface FinancePageProps {
 }
 
 type FinanceFilter = "all" | "income" | "expense" | "balance" | "pending";
+const FINANCE_MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePageProps) {
   const today = new Date().toISOString().slice(0, 10);
@@ -316,6 +318,8 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<FinanceFilter>("all");
+  const [reportYear, setReportYear] = useState<number | null>(null);
+  const [reportMonth, setReportMonth] = useState<number | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<FinancialEntry | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -364,38 +368,20 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
 
   useEffect(() => { void load(); }, [load]);
 
-  const summary = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    let pending = 0;
-    let overdue = 0;
-    for (const entry of entries) {
-      if (entry.is_installment) {
-        for (const installment of entry.installments) {
-          if (installment.status === "recebida") income += Number(installment.amount);
-          else {
-            pending += Number(installment.amount);
-            if (installment.due_date < today) overdue += 1;
-          }
-        }
-      } else if (entry.kind === "receita") income += Number(entry.amount);
-      else expense += Number(entry.amount);
-    }
-    return { income, expense, balance: income - expense, pending, overdue };
-  }, [entries, today]);
-
-  const filteredEntries = useMemo(() => entries.filter((entry) => {
-    if (filter === "income") return entry.kind === "receita";
-    if (filter === "expense") return entry.kind === "despesa";
-    if (filter === "pending") {
-      return entry.installments.some((installment) => installment.status === "pendente");
-    }
-    if (filter === "balance") {
-      return entry.kind === "despesa" || !entry.is_installment
-        || entry.installments.some((installment) => installment.status === "recebida");
-    }
+  const years = useMemo(() => financialYears(entries, new Date().getFullYear()), [entries]);
+  const report = useMemo(() => buildFinanceReport(entries, { year: reportYear, month: reportMonth }, today), [entries, reportYear, reportMonth, today]);
+  const breakdown = useMemo(() => reportYear === null
+    ? years.map((year) => ({ label: String(year), year, month: null, ...buildFinanceReport(entries, { year, month: null }, today) }))
+    : FINANCE_MONTHS.map((label, index) => ({ label, year: reportYear, month: index + 1, ...buildFinanceReport(entries, { year: reportYear, month: index + 1 }, today) })),
+  [entries, years, reportYear, today]);
+  const chartMax = Math.max(1, ...breakdown.map((item) => Math.max(item.income, item.expense)));
+  const filteredEntries = report.rows.filter((row) => {
+    if (filter === "income") return row.income > 0;
+    if (filter === "expense") return row.expense > 0;
+    if (filter === "pending") return row.pending > 0;
+    if (filter === "balance") return row.income > 0 || row.expense > 0;
     return true;
-  }), [entries, filter]);
+  });
 
   const filterTitle: Record<FinanceFilter, string> = {
     all: "Histórico financeiro",
@@ -527,21 +513,27 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
 
   return <>
     <section className="page-head"><div><p className="eyebrow">FINANCEIRO COMPARTILHADO</p><h2>{workspaceName}</h2><p>Todos os membros autorizados veem os mesmos lançamentos e parcelas.</p></div><button className="primary-btn" onClick={() => setShowForm(true)}>＋ Nova movimentação</button></section>
+    <section className="finance-period panel" aria-label="Período do relatório financeiro">
+      <div><p className="eyebrow">ACOMPANHAMENTO FINANCEIRO</p><h3>{reportYear === null ? "Todo o período" : reportMonth === null ? `Ano de ${reportYear}` : `${FINANCE_MONTHS[reportMonth - 1]} de ${reportYear}`}</h3><p>Recebimentos pela data em que entraram; despesas pela data do lançamento; pendências pelo vencimento.</p></div>
+      <div className="finance-period-controls"><label>Ano<select value={reportYear ?? ""} onChange={(event) => { setReportYear(event.target.value ? Number(event.target.value) : null); setReportMonth(null); }}><option value="">Todos os anos</option>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label><label>Mês<select value={reportMonth ?? ""} disabled={reportYear === null} onChange={(event) => setReportMonth(event.target.value ? Number(event.target.value) : null)}><option value="">Ano inteiro</option>{FINANCE_MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label></div>
+    </section>
     <section className="metrics-grid" aria-label="Filtros financeiros">
-      <button className={`metric finance-metric blue ${filter === "income" ? "active" : ""}`} aria-pressed={filter === "income"} onClick={() => selectFilter("income")}><span>RECEITAS</span><strong>{money(summary.income)}</strong><small>Valores efetivamente recebidos</small><em>Ver receitas →</em></button>
-      <button className={`metric finance-metric red ${filter === "expense" ? "active" : ""}`} aria-pressed={filter === "expense"} onClick={() => selectFilter("expense")}><span>DESPESAS</span><strong>{money(summary.expense)}</strong><small>Saídas registradas</small><em>Ver despesas →</em></button>
-      <button className={`metric finance-metric ${summary.balance >= 0 ? "green" : "red"} ${filter === "balance" ? "active" : ""}`} aria-pressed={filter === "balance"} onClick={() => selectFilter("balance")}><span>SALDO</span><strong>{money(summary.balance)}</strong><small>Receitas menos despesas</small><em>Ver composição →</em></button>
-      <button className={`metric finance-metric orange ${filter === "pending" ? "active" : ""}`} aria-pressed={filter === "pending"} onClick={() => selectFilter("pending")}><span>A RECEBER</span><strong>{money(summary.pending)}</strong><small>{summary.overdue} parcela(s) atrasada(s)</small><em>Ver pendências →</em></button>
+      <button className={`metric finance-metric blue ${filter === "income" ? "active" : ""}`} aria-pressed={filter === "income"} onClick={() => selectFilter("income")}><span>RECEBIDO</span><strong>{money(report.income / 100)}</strong><small>Valores efetivamente recebidos</small><em>Ver recebimentos →</em></button>
+      <button className={`metric finance-metric red ${filter === "expense" ? "active" : ""}`} aria-pressed={filter === "expense"} onClick={() => selectFilter("expense")}><span>DESPESAS</span><strong>{money(report.expense / 100)}</strong><small>Saídas registradas</small><em>Ver despesas →</em></button>
+      <button className={`metric finance-metric ${report.balance >= 0 ? "green" : "red"} ${filter === "balance" ? "active" : ""}`} aria-pressed={filter === "balance"} onClick={() => selectFilter("balance")}><span>SALDO</span><strong>{money(report.balance / 100)}</strong><small>Recebido menos despesas</small><em>Ver composição →</em></button>
+      <button className={`metric finance-metric orange ${filter === "pending" ? "active" : ""}`} aria-pressed={filter === "pending"} onClick={() => selectFilter("pending")}><span>A RECEBER</span><strong>{money(report.pending / 100)}</strong><small>{report.overdueCount} parcela(s) atrasada(s)</small><em>Ver pendências →</em></button>
     </section>
     {error && <div className="error-banner" role="alert">{error}</div>}
+    <section className="panel finance-evolution"><header className="panel-head"><div><p className="eyebrow">EVOLUÇÃO</p><h3>{reportYear === null ? "Comparativo por ano" : `Comparativo mensal · ${reportYear}`}</h3></div><span>Recebido · Despesas · A receber</span></header><div className="finance-evolution-list">{breakdown.map((item) => <button type="button" className={item.month === reportMonth && item.year === reportYear ? "active" : ""} key={item.label} onClick={() => { setReportYear(item.year); setReportMonth(item.month); }}><span>{item.label}</span><div className="finance-evolution-bars"><i className="received" style={{ width: `${item.income / chartMax * 100}%` }} /><i className="spent" style={{ width: `${item.expense / chartMax * 100}%` }} /></div><strong>{money(item.income / 100)}</strong><small>{money(item.expense / 100)} despesas · {money(item.pending / 100)} a receber</small></button>)}</div></section>
     <section className="panel finance-list-panel">
       <header className="panel-head"><div><p className="eyebrow">MOVIMENTAÇÕES · {filteredEntries.length}</p><h3>{filterTitle[filter]}</h3></div><div className="finance-panel-actions">{filter !== "all" && <button className="link-button" onClick={() => setFilter("all")}>Limpar filtro</button>}<button className="ghost-btn" onClick={() => void load()}>↻ Atualizar</button></div></header>
-      {loading ? <div className="empty-state">Carregando financeiro…</div> : entries.length === 0 ? <div className="empty-state"><strong>Nenhuma movimentação cadastrada.</strong><span>Cadastre a primeira receita ou despesa.</span></div> : filteredEntries.length === 0 ? <div className="empty-state"><strong>Nenhum lançamento neste filtro.</strong><span>Clique novamente no card selecionado para ver todo o histórico.</span></div> : filteredEntries.map((entry) => <article className="finance-entry finance-entry-clickable" key={entry.id} role="button" tabIndex={0} onClick={() => openEntry(entry)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) openEntry(entry); }}>
-        <div><strong>{entry.description}</strong><span>{formatDate(entry.entry_date)} · {entry.category}</span></div>
-        <span className={`kind ${entry.kind}`}>{entry.kind === "receita" ? "Receita" : "Despesa"}</span>
-        <strong className="entry-value">{money(entry.amount)}</strong>
+      {loading ? <div className="empty-state">Carregando financeiro…</div> : entries.length === 0 ? <div className="empty-state"><strong>Nenhuma movimentação cadastrada.</strong><span>Cadastre a primeira receita ou despesa.</span></div> : filteredEntries.length === 0 ? <div className="empty-state"><strong>Nenhum lançamento neste período ou filtro.</strong><span>Escolha outro mês/ano ou clique novamente no card selecionado.</span></div> : filteredEntries.map((row) => <article className="finance-entry finance-entry-clickable" key={row.entry.id} role="button" tabIndex={0} onClick={() => openEntry(row.entry)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) openEntry(row.entry); }}>
+        <div><strong>{row.entry.description}</strong><span>{formatDate(row.entry.entry_date)} · {row.entry.category}</span></div>
+        <span className={`kind ${row.entry.kind}`}>{row.entry.kind === "receita" ? "Receita" : "Despesa"}</span>
+        <strong className="entry-value">{money(row.entry.amount)}</strong>
         <span className="finance-entry-open">Ver detalhes e editar →</span>
-        {entry.is_installment && <div className="installment-strip">{entry.installments.map((installment) => <div key={installment.id} className={installment.status}><span>{installment.number}/{installment.total_installments} · {formatDate(installment.due_date)} · {money(installment.amount)}</span>{installment.status === "pendente" ? <button onClick={(event) => { event.stopPropagation(); void receive(entry.id, installment.number); }}>Receber</button> : <b>Recebida</b>}</div>)}</div>}
+        {reportYear !== null && <small className="finance-entry-period">Neste período: {row.income > 0 && `${money(row.income / 100)} recebido`}{row.expense > 0 && `${money(row.expense / 100)} despesa`}{row.pending > 0 && `${row.income || row.expense ? " · " : ""}${money(row.pending / 100)} a receber`}</small>}
+        {row.entry.is_installment && <div className="installment-strip">{row.entry.installments.map((installment) => <div key={installment.id} className={installment.status}><span>{installment.number}/{installment.total_installments} · {formatDate(installment.due_date)} · {money(installment.amount)}</span>{installment.status === "pendente" ? <button onClick={(event) => { event.stopPropagation(); void receive(row.entry.id, installment.number); }}>Receber</button> : <b>Recebida</b>}</div>)}</div>}
       </article>)}
     </section>
     {showForm && <div className="modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setShowForm(false)}><section className="modal-card" role="dialog" aria-modal="true"><header className="modal-head"><div><p className="eyebrow">FINANCEIRO</p><h2>Nova movimentação</h2></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label="Fechar">×</button></header><form onSubmit={save}><div className="form-grid">
@@ -763,7 +755,7 @@ function WorkspaceApp({ session }: { session: Session }) {
     return (
       <main className="centered-page">
         <section className="auth-card workspace-chooser-card">
-          <div className="brand-lockup"><div className="brand-mark">P</div><div><strong>ProcessFlow</strong><span>Gestão online</span></div></div>
+          <div className="brand-lockup"><div className="brand-mark"><img src="/processflow-mark.svg" alt="" /></div><div><strong>ProcessFlow</strong><span>Gestão online</span></div></div>
           <p className="eyebrow">SELECIONE O AMBIENTE</p>
           <h1>Onde você quer entrar?</h1>
           <p>Escolha um ambiente disponível para sua conta ou crie um novo espaço separado.</p>
@@ -801,7 +793,7 @@ function WorkspaceApp({ session }: { session: Session }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-lockup"><div className="brand-mark">P</div><div><strong>ProcessFlow</strong><span>Gestão online</span></div></div>
+        <div className="brand-lockup"><div className="brand-mark"><img src="/processflow-mark.svg" alt="" /></div><div><strong>ProcessFlow</strong><span>Gestão online</span></div></div>
         <nav aria-label="Navegação principal">
           <span className="side-label">NAVEGAÇÃO</span>
           <button className={`nav-item ${activePage === "dashboard" ? "active" : ""}`} onClick={() => setActivePage("dashboard")}>⌂ <span>Dashboard</span></button>
