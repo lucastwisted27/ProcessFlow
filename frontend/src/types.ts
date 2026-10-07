@@ -178,6 +178,23 @@ export interface DjenSyncResult {
   warnings: string[];
 }
 
+export type PriorityItemType = "balcao" | "inicial";
+
+export interface PriorityItem {
+  id: string;
+  item_type: PriorityItemType;
+  process_number: string;
+  name: string;
+  counterparty: string;
+  request_text: string;
+  response_text: string;
+  missing_document: boolean | null;
+  notes: string;
+  completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ImportEntitySummary {
   received: number;
   imported: number;

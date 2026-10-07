@@ -6,6 +6,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.data_transfer import router as data_transfer_router
 from app.api.djen import router as djen_router
 from app.api.finance import router as finance_router
+from app.api.priorities import router as priorities_router
 from app.api.processes import router as processes_router
 from app.api.workspaces import router as workspaces_router
 from app.core.config import get_settings
@@ -28,6 +29,7 @@ app.add_middleware(
 
 app.include_router(workspaces_router, prefix="/api/v1")
 app.include_router(processes_router, prefix="/api/v1")
+app.include_router(priorities_router, prefix="/api/v1")
 app.include_router(finance_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(data_transfer_router, prefix="/api/v1")

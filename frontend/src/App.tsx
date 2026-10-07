@@ -6,6 +6,7 @@ import { AgendaPage } from "./AgendaPage";
 import { DashboardPage } from "./DashboardPage";
 import { DataPage } from "./DataPage";
 import { DjenPage } from "./DjenPage";
+import { PriorityPage } from "./PriorityPage";
 import { apiRequest } from "./lib/api";
 import { buildFinanceReport, financialYears } from "./lib/financeReport";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
@@ -579,7 +580,7 @@ function FinancePage({ accessToken, workspaceId, workspaceName }: FinancePagePro
 }
 
 function WorkspaceApp({ session }: { session: Session }) {
-  const [activePage, setActivePage] = useState<"dashboard" | "processes" | "agenda" | "djen" | "finance" | "data">("dashboard");
+  const [activePage, setActivePage] = useState<"dashboard" | "processes" | "agenda" | "djen" | "finance" | "priorities" | "data">("dashboard");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem("processflow.workspace") ?? "");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -811,6 +812,7 @@ function WorkspaceApp({ session }: { session: Session }) {
           <button className={`nav-item ${activePage === "agenda" ? "active" : ""}`} onClick={() => setActivePage("agenda")}>▦ <span>Agenda</span></button>
           <button className={`nav-item ${activePage === "djen" ? "active" : ""}`} onClick={() => setActivePage("djen")}>◉ <span>Atualizações diárias</span></button>
           <button className={`nav-item ${activePage === "finance" ? "active" : ""}`} onClick={() => setActivePage("finance")}>R$ <span>Financeiro</span></button>
+          <button className={`nav-item ${activePage === "priorities" ? "active" : ""}`} onClick={() => setActivePage("priorities")}>✓ <span>Prioridades a fazer</span></button>
           <button className={`nav-item ${activePage === "data" ? "active" : ""}`} onClick={() => setActivePage("data")}>⇅ <span>Importar / Exportar</span></button>
         </nav>
         <div className="account-card"><span>{session.user.email}</span><button onClick={() => void supabase.auth.signOut()}>Sair</button></div>
@@ -818,7 +820,7 @@ function WorkspaceApp({ session }: { session: Session }) {
 
       <main className="main-content">
         <header className="topbar">
-          <div><p className="eyebrow">GESTÃO</p><h1>{{ dashboard: "Dashboard", processes: "Processos", agenda: "Agenda", djen: "Atualizações diárias", finance: "Financeiro", data: "Dados" }[activePage]}</h1></div>
+          <div><p className="eyebrow">GESTÃO</p><h1>{{ dashboard: "Dashboard", processes: "Processos", agenda: "Agenda", djen: "Atualizações diárias", finance: "Financeiro", priorities: "Prioridades a fazer", data: "Dados" }[activePage]}</h1></div>
           <div className="top-actions">
             <select aria-label="Espaço de trabalho" value={workspaceId} onChange={(event) => { setWorkspaceId(event.target.value); localStorage.setItem("processflow.workspace", event.target.value); }}>
               {workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -859,9 +861,10 @@ function WorkspaceApp({ session }: { session: Session }) {
         {activePage === "agenda" && workspace && <AgendaPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "djen" && workspace && <DjenPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "finance" && workspace && <FinancePage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
+        {activePage === "priorities" && workspace && <PriorityPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
         {activePage === "data" && workspace && <DataPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} canImport={workspace.role === "admin"} />}
       </main>
-      <nav className="mobile-nav" aria-label="Navegação móvel"><button className={activePage === "dashboard" ? "active" : ""} onClick={() => setActivePage("dashboard")}>⌂<span>Dashboard</span></button><button className={activePage === "processes" ? "active" : ""} onClick={() => setActivePage("processes")}>▣<span>Processos</span></button><button className={activePage === "agenda" ? "active" : ""} onClick={() => setActivePage("agenda")}>▦<span>Agenda</span></button><button className={activePage === "djen" ? "active" : ""} onClick={() => setActivePage("djen")}>◉<span>DJEN</span></button><button className={activePage === "finance" ? "active" : ""} onClick={() => setActivePage("finance")}>R$<span>Financeiro</span></button><button className={activePage === "data" ? "active" : ""} onClick={() => setActivePage("data")}>⇅<span>Dados</span></button><button onClick={() => void supabase.auth.signOut()}>↪<span>Sair</span></button></nav>
+      <nav className="mobile-nav" aria-label="Navegação móvel"><button className={activePage === "dashboard" ? "active" : ""} onClick={() => setActivePage("dashboard")}>⌂<span>Dashboard</span></button><button className={activePage === "processes" ? "active" : ""} onClick={() => setActivePage("processes")}>▣<span>Processos</span></button><button className={activePage === "agenda" ? "active" : ""} onClick={() => setActivePage("agenda")}>▦<span>Agenda</span></button><button className={activePage === "djen" ? "active" : ""} onClick={() => setActivePage("djen")}>◉<span>DJEN</span></button><button className={activePage === "finance" ? "active" : ""} onClick={() => setActivePage("finance")}>R$<span>Financeiro</span></button><button className={activePage === "priorities" ? "active" : ""} onClick={() => setActivePage("priorities")}>✓<span>Prioridades</span></button><button className={activePage === "data" ? "active" : ""} onClick={() => setActivePage("data")}>⇅<span>Dados</span></button><button onClick={() => void supabase.auth.signOut()}>↪<span>Sair</span></button></nav>
       {showNew && <NewProcessModal busy={saving} onClose={() => setShowNew(false)} onSave={createProcess} />}
       {selectedProcess && <ProcessDetailModal key={selectedProcess.id} process={selectedProcess} busy={saving} error={processActionError} onClose={() => setSelectedProcess(null)} onSave={updateSelectedProcess} onToggleStatus={toggleSelectedProcessStatus} onDelete={deleteSelectedProcess} />}
     </div>
