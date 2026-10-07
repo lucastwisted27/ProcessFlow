@@ -7,7 +7,15 @@ export interface Workspace {
   created_at: string;
 }
 
-export type ProcessStatus = "Em andamento" | "Atenção" | "Sobrestado" | "Concluído";
+export type ProcessStatus =
+  | "Em andamento"
+  | "Atenção"
+  | "Sobrestado"
+  | "Aguardando Pagamento"
+  | "Aguardando Manifestação Contrária"
+  | "Ciência de Decisão"
+  | "Juizado"
+  | "Concluído";
 export type ProcessPriority = "Baixa" | "Normal" | "Alta" | "Urgente";
 
 export interface ProcessRecord {
@@ -118,6 +126,10 @@ export interface DashboardSummary {
   processes: {
     total: number;
     in_progress: number;
+    stayed: number;
+    awaiting_payment: number;
+    awaiting_opposing_manifestation: number;
+    decision_acknowledgment: number;
     critical_deadlines: number;
     completed: number;
   };

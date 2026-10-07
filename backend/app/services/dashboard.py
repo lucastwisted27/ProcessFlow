@@ -33,6 +33,17 @@ def build_dashboard_summary(
     process_summary = DashboardProcessSummary(
         total=len(processes),
         in_progress=sum(item.status == ProcessStatus.IN_PROGRESS for item in processes),
+        stayed=sum(item.status == ProcessStatus.STAYED for item in processes),
+        awaiting_payment=sum(
+            item.status == ProcessStatus.AWAITING_PAYMENT for item in processes
+        ),
+        awaiting_opposing_manifestation=sum(
+            item.status == ProcessStatus.AWAITING_OPPOSING_MANIFESTATION
+            for item in processes
+        ),
+        decision_acknowledgment=sum(
+            item.status == ProcessStatus.DECISION_ACKNOWLEDGMENT for item in processes
+        ),
         critical_deadlines=sum(
             item.status != ProcessStatus.COMPLETED
             and item.due_date is not None

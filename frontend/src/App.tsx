@@ -34,6 +34,17 @@ const EMPTY_PROCESS: ProcessDraft = {
   notes: "",
 };
 
+const PROCESS_STATUSES: ProcessStatus[] = [
+  "Em andamento",
+  "Atenção",
+  "Sobrestado",
+  "Aguardando Pagamento",
+  "Aguardando Manifestação Contrária",
+  "Ciência de Decisão",
+  "Juizado",
+  "Concluído",
+];
+
 function formatDate(value: string | null): string {
   if (!value) return "Sem prazo";
   return new Intl.DateTimeFormat("pt-BR").format(new Date(`${value.slice(0, 10)}T12:00:00`));
@@ -156,7 +167,7 @@ function NewProcessModal({ busy, onClose, onSave }: NewProcessModalProps) {
             <label>Prazo<input type="date" value={draft.due_date} onChange={(event) => field("due_date", event.target.value)} /></label>
             <label>Próxima ação<input value={draft.next_action} onChange={(event) => field("next_action", event.target.value)} /></label>
             <label>Prioridade<select value={draft.priority} onChange={(event) => field("priority", event.target.value as ProcessPriority)}><option>Baixa</option><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
-            <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}><option>Em andamento</option><option>Atenção</option><option>Sobrestado</option><option>Concluído</option></select></label>
+            <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}>{PROCESS_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
             <label className="full">Observações<textarea rows={4} value={draft.notes} onChange={(event) => field("notes", event.target.value)} /></label>
           </div>
           <footer className="modal-actions"><button type="button" className="ghost-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={busy}>{busy ? "Salvando…" : "Salvar processo"}</button></footer>
@@ -242,7 +253,7 @@ function ProcessDetailModal({
               <label>Prazo<input type="date" value={draft.due_date} onChange={(event) => field("due_date", event.target.value)} /></label>
               <label>Próxima ação<input value={draft.next_action} onChange={(event) => field("next_action", event.target.value)} /></label>
               <label>Prioridade<select value={draft.priority} onChange={(event) => field("priority", event.target.value as ProcessPriority)}><option>Baixa</option><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
-              <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}><option>Em andamento</option><option>Atenção</option><option>Sobrestado</option><option>Concluído</option></select></label>
+              <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}>{PROCESS_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
               <label className="full">Observações<textarea rows={6} value={draft.notes} onChange={(event) => field("notes", event.target.value)} /></label>
             </div>
             <footer className="modal-actions">
@@ -835,7 +846,7 @@ function WorkspaceApp({ session }: { session: Session }) {
 
         <section className="toolbar" aria-label="Filtros">
           <label className="search-box">⌕<input placeholder="Buscar por cliente, número ou tipo…" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ProcessStatus | "")}><option value="">Todos os status</option><option>Em andamento</option><option>Atenção</option><option>Sobrestado</option><option>Concluído</option></select>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as ProcessStatus | "")}><option value="">Todos os status</option>{PROCESS_STATUSES.map((status) => <option key={status}>{status}</option>)}</select>
           <label className="check-filter"><input type="checkbox" checked={attentionOnly} onChange={(event) => setAttentionOnly(event.target.checked)} /> Prazos críticos</label>
           <button className="ghost-btn" onClick={() => void loadProcesses()}>↻ Atualizar</button>
         </section>

@@ -29,6 +29,10 @@ def test_dashboard_summary_matches_process_and_cash_rules() -> None:
         _process(ProcessStatus.IN_PROGRESS, today + timedelta(days=3)),
         _process(ProcessStatus.IN_PROGRESS, today + timedelta(days=4)),
         _process(ProcessStatus.ATTENTION, today - timedelta(days=1)),
+        _process(ProcessStatus.STAYED, None),
+        _process(ProcessStatus.AWAITING_PAYMENT, None),
+        _process(ProcessStatus.AWAITING_OPPOSING_MANIFESTATION, None),
+        _process(ProcessStatus.DECISION_ACKNOWLEDGMENT, None),
         _process(ProcessStatus.COMPLETED, today - timedelta(days=30)),
     ]
 
@@ -91,8 +95,12 @@ def test_dashboard_summary_matches_process_and_cash_rules() -> None:
     )
 
     assert result.processes.model_dump() == {
-        "total": 4,
+        "total": 8,
         "in_progress": 2,
+        "stayed": 1,
+        "awaiting_payment": 1,
+        "awaiting_opposing_manifestation": 1,
+        "decision_acknowledgment": 1,
         "critical_deadlines": 2,
         "completed": 1,
     }

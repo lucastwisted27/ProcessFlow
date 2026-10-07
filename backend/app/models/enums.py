@@ -10,6 +10,10 @@ class ProcessStatus(StrEnum):
     IN_PROGRESS = "Em andamento"
     ATTENTION = "Atenção"
     STAYED = "Sobrestado"
+    AWAITING_PAYMENT = "Aguardando Pagamento"
+    AWAITING_OPPOSING_MANIFESTATION = "Aguardando Manifestação Contrária"
+    DECISION_ACKNOWLEDGMENT = "Ciência de Decisão"
+    SMALL_CLAIMS_COURT = "Juizado"
     COMPLETED = "Concluído"
 
 

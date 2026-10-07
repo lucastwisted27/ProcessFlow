@@ -15,6 +15,10 @@ type DetailKey =
   | "process-progress"
   | "process-critical"
   | "process-completed"
+  | "process-stayed"
+  | "process-awaiting-payment"
+  | "process-awaiting-opposing"
+  | "process-decision"
   | "finance-receivable"
   | "finance-received"
   | "finance-overdue"
@@ -33,6 +37,10 @@ const DETAIL_TITLES: Record<DetailKey, { eyebrow: string; title: string; empty: 
   "process-progress": { eyebrow: "PROCESSOS", title: "Processos em andamento", empty: "Nenhum processo em andamento." },
   "process-critical": { eyebrow: "PRAZOS", title: "Prazos críticos", empty: "Nenhum prazo crítico." },
   "process-completed": { eyebrow: "PROCESSOS", title: "Processos concluídos", empty: "Nenhum processo concluído." },
+  "process-stayed": { eyebrow: "PROCESSOS", title: "Processos sobrestados", empty: "Nenhum processo sobrestado." },
+  "process-awaiting-payment": { eyebrow: "PROCESSOS", title: "Aguardando pagamento", empty: "Nenhum processo aguardando pagamento." },
+  "process-awaiting-opposing": { eyebrow: "PROCESSOS", title: "Aguardando manifestação contrária", empty: "Nenhum processo aguardando manifestação contrária." },
+  "process-decision": { eyebrow: "PROCESSOS", title: "Ciência de decisão", empty: "Nenhum processo em ciência de decisão." },
   "finance-receivable": { eyebrow: "FINANCEIRO", title: "Valores a receber", empty: "Nenhum valor pendente." },
   "finance-received": { eyebrow: "FINANCEIRO", title: "Valores recebidos", empty: "Nenhum recebimento registrado." },
   "finance-overdue": { eyebrow: "FINANCEIRO", title: "Recebimentos em atraso", empty: "Nenhum recebimento atrasado." },
@@ -149,6 +157,10 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName, onOpenP
         const filtered = processes.filter((process) => {
           if (key === "process-progress") return process.status === "Em andamento";
           if (key === "process-completed") return process.status === "Concluído";
+          if (key === "process-stayed") return process.status === "Sobrestado";
+          if (key === "process-awaiting-payment") return process.status === "Aguardando Pagamento";
+          if (key === "process-awaiting-opposing") return process.status === "Aguardando Manifestação Contrária";
+          if (key === "process-decision") return process.status === "Ciência de Decisão";
           if (key === "process-critical") return process.status !== "Concluído" && Boolean(process.due_date) && new Date(`${process.due_date}T12:00:00`) <= criticalLimit;
           return true;
         });
@@ -247,6 +259,12 @@ export function DashboardPage({ accessToken, workspaceId, workspaceName, onOpenP
               <MetricCard tone="blue" icon="↻" label="EM ANDAMENTO" value={summary.processes.in_progress} detail="Trabalho em curso" onClick={() => void openDetail("process-progress")} />
               <MetricCard tone="orange" icon="!" label="PRAZOS CRÍTICOS" value={summary.processes.critical_deadlines} detail="Exigem atenção" onClick={() => void openDetail("process-critical")} />
               <MetricCard tone="green" icon="✓" label="CONCLUÍDOS" value={summary.processes.completed} detail="Processos finalizados" onClick={() => void openDetail("process-completed")} />
+            </div>
+            <div className="dashboard-grid dashboard-status-grid">
+              <MetricCard tone="orange" icon="Ⅱ" label="SOBRESTADOS" value={summary.processes.stayed} detail="Temporariamente suspensos" onClick={() => void openDetail("process-stayed")} />
+              <MetricCard tone="green" icon="R$" label="AGUARDANDO PAGAMENTO" value={summary.processes.awaiting_payment} detail="Pagamento pendente" onClick={() => void openDetail("process-awaiting-payment")} />
+              <MetricCard tone="blue" icon="↔" label="MANIFESTAÇÃO CONTRÁRIA" value={summary.processes.awaiting_opposing_manifestation} detail="Aguardando a outra parte" onClick={() => void openDetail("process-awaiting-opposing")} />
+              <MetricCard tone="red" icon="!" label="CIÊNCIA DE DECISÃO" value={summary.processes.decision_acknowledgment} detail="Decisão para análise" onClick={() => void openDetail("process-decision")} />
             </div>
           </section>
           <section className="panel progress-panel" aria-labelledby="progress-title">
