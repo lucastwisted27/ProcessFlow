@@ -870,7 +870,7 @@ function WorkspaceApp({ session }: { session: Session }) {
         </>}
         {activePage === "dashboard" && workspace && <DashboardPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "agenda" && workspace && <AgendaPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
-        {activePage === "djen" && workspace && <DjenPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
+        {activePage === "djen" && workspace && <DjenPage key={workspace.id} accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} onOpenProcess={(process) => { setSelectedProcess(process); setProcessActionError(""); }} />}
         {activePage === "finance" && workspace && <FinancePage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
         {activePage === "priorities" && workspace && <PriorityPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} />}
         {activePage === "data" && workspace && <DataPage accessToken={token} workspaceId={workspace.id} workspaceName={workspace.name} canImport={workspace.role === "admin"} />}

@@ -42,6 +42,8 @@ class DjenSubscriptionRead(BaseModel):
 
 
 class DjenProcessReference(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     client: str
     number: str

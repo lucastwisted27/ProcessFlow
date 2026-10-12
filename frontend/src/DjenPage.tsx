@@ -84,6 +84,8 @@ function PublicationModal({ publication, busy, onClose, onToggleRead, onOpenProc
 export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProcess }: DjenPageProps) {
   const [overview, setOverview] = useState<DjenOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -100,8 +102,10 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
   const [oabState, setOabState] = useState("");
   const [activeSubscriptionId, setActiveSubscriptionId] = useState<string | null>(null);
   const autoSyncAttempted = useRef(false);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadSequence.current;
     setLoading(true);
     const params = new URLSearchParams();
     if (search.trim()) params.set("search", search.trim());
@@ -109,12 +113,15 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
     if (linkedOnly) params.set("linked_only", "true");
     try {
       const data = await apiRequest<DjenOverview>(`/api/v1/djen?${params}`, { method: "GET", accessToken, workspaceId });
+      if (requestId !== loadSequence.current) return;
       setOverview(data);
-      setError("");
+      setHasLoaded(true);
+      setLoadError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível carregar as publicações.");
+      if (requestId !== loadSequence.current) return;
+      setLoadError(reason instanceof Error ? reason.message : "Não foi possível carregar as publicações.");
     } finally {
-      setLoading(false);
+      if (requestId === loadSequence.current) setLoading(false);
     }
   }, [accessToken, linkedOnly, search, unreadOnly, workspaceId]);
 
@@ -133,7 +140,10 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   const sync = useCallback(async (automatic = false) => {
@@ -196,10 +206,10 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
   }, [accessToken, load, overview.subscriptions, workspaceId]);
 
   useEffect(() => {
-    if (loading || autoSyncAttempted.current || overview.subscriptions.length === 0 || isSyncedToday(overview.last_synced_at)) return;
+    if (!hasLoaded || loadError || loading || autoSyncAttempted.current || overview.subscriptions.length === 0 || isSyncedToday(overview.last_synced_at)) return;
     autoSyncAttempted.current = true;
     void sync(true);
-  }, [loading, overview.last_synced_at, overview.subscriptions.length, sync]);
+  }, [hasLoaded, loadError, loading, overview.last_synced_at, overview.subscriptions.length, sync]);
 
   async function addSubscription(event: FormEvent) {
     event.preventDefault();
@@ -311,12 +321,14 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
   return <>
     <section className="page-head djen-heading">
       <div><p className="eyebrow">ATUALIZAÇÕES DIÁRIAS</p><h2>Publicações DJEN</h2><p>{workspaceName} · consulta oficial por OAB e vínculo automático com os processos.</p></div>
-      <div className="djen-head-actions"><button className="ghost-btn" onClick={() => setShowSettings((value) => !value)}>⚙ OABs monitoradas</button><button className="primary-btn" disabled={syncing || overview.subscriptions.length === 0} onClick={() => void sync(false)}>↻ {syncing ? "Consultando CNJ…" : "Buscar atualizações"}</button></div>
+      <div className="djen-head-actions"><button className="ghost-btn" disabled={loading} onClick={() => void load()}>↻ {loading ? "Carregando…" : "Recarregar"}</button><button className="ghost-btn" disabled={!hasLoaded} onClick={() => setShowSettings((value) => !value)}>⚙ OABs monitoradas</button><button className="primary-btn" disabled={!hasLoaded || syncing || overview.subscriptions.length === 0} onClick={() => void sync(false)}>↻ {syncing ? "Consultando CNJ…" : "Buscar atualizações"}</button></div>
     </section>
     <div className="djen-safety-note"><strong>Fonte oficial: Diário de Justiça Eletrônico Nacional.</strong><span>A consulta é atualizada automaticamente uma vez ao dia quando o escritório acessa esta página. Sempre confira o inteiro teor e o sistema do tribunal.</span>{overview.last_synced_at && <small>Última consulta: {new Date(overview.last_synced_at).toLocaleString("pt-BR")}</small>}</div>
     {error && <div className="error-banner" role="alert">{error}</div>}
+    {loadError && <div className="error-banner djen-load-error" role="alert"><div><strong>Não foi possível carregar as publicações.</strong><span>{loadError}</span>{hasLoaded && <small>Exibindo os últimos dados carregados. Recarregue para atualizar.</small>}</div><button className="ghost-btn" disabled={loading} onClick={() => void load()}>{loading ? "Carregando…" : "Tentar novamente"}</button></div>}
     {notice && <div className="success-banner" role="status">{notice}</div>}
 
+    {hasLoaded ? <>
     {(showSettings || overview.subscriptions.length === 0) && <section className="panel djen-settings">
       <header className="panel-head"><div><p className="eyebrow">MONITORAMENTO</p><h3>Inscrições da OAB</h3></div></header>
       <div className="djen-settings-body">
@@ -367,6 +379,7 @@ export function DjenPage({ accessToken, workspaceId, workspaceName, onOpenProces
       </button>)}
     </section>
     <p className="djen-source">Integração com a <a href="https://comunicaapi.pje.jus.br/swagger/index.html" target="_blank" rel="noreferrer">API pública do DJEN/CNJ ↗</a>.</p>
+    </> : <section className="panel"><div className="empty-state" role="status"><strong>{loading ? "Carregando OABs e publicações…" : "Dados do DJEN indisponíveis no momento."}</strong><span>{loading ? "Consultando os registros salvos do escritório." : "Clique em Tentar novamente para consultar os registros salvos."}</span></div></section>}
     {selected && <PublicationModal publication={selected} busy={saving} onClose={() => setSelected(null)} onToggleRead={() => void toggleRead()} onOpenProcess={() => void openLinkedProcess(selected)} />}
   </>;
 }
