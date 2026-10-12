@@ -23,13 +23,14 @@ class ProcessBase(BaseModel):
     client: str = Field(min_length=1, max_length=300)
     number: str = Field(default="", max_length=120)
     process_type: str = Field(default="", max_length=200)
+    court: str = Field(default="", max_length=300)
     due_date: date | None = None
     next_action: str = Field(default="", max_length=300)
     priority: ProcessPriority = ProcessPriority.NORMAL
     status: ProcessStatus = ProcessStatus.IN_PROGRESS
     notes: str = ""
 
-    @field_validator("client", "number", "process_type", "next_action", mode="before")
+    @field_validator("client", "number", "process_type", "court", "next_action", mode="before")
     @classmethod
     def strip_text(cls, value: str) -> str:
         return value.strip() if isinstance(value, str) else value
@@ -43,11 +44,19 @@ class ProcessUpdate(BaseModel):
     client: str | None = Field(default=None, min_length=1, max_length=300)
     number: str | None = Field(default=None, max_length=120)
     process_type: str | None = Field(default=None, max_length=200)
+    court: str | None = Field(default=None, max_length=300)
     due_date: date | None = None
     next_action: str | None = Field(default=None, max_length=300)
     priority: ProcessPriority | None = None
     status: ProcessStatus | None = None
     notes: str | None = None
+
+    @field_validator("court", mode="before")
+    @classmethod
+    def normalize_court(cls, value: str | None) -> str:
+        if value is None:
+            return ""
+        return value.strip() if isinstance(value, str) else value
 
 
 class ProcessRead(ProcessBase):

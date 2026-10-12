@@ -25,6 +25,7 @@ def _filters(
                 Process.client.ilike(pattern),
                 Process.number.ilike(pattern),
                 Process.process_type.ilike(pattern),
+                Process.court.ilike(pattern),
                 Process.next_action.ilike(pattern),
                 Process.notes.ilike(pattern),
             )

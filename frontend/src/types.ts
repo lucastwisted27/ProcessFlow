@@ -14,7 +14,6 @@ export type ProcessStatus =
   | "Aguardando Pagamento"
   | "Aguardando Manifestação Contrária"
   | "Ciência de Decisão"
-  | "Juizado"
   | "Concluído";
 export type ProcessPriority = "Baixa" | "Normal" | "Alta" | "Urgente";
 
@@ -24,6 +23,7 @@ export interface ProcessRecord {
   client: string;
   number: string;
   process_type: string;
+  court: string;
   due_date: string | null;
   next_action: string;
   priority: ProcessPriority;
@@ -48,6 +48,7 @@ export interface ProcessDraft {
   client: string;
   number: string;
   process_type: string;
+  court: string;
   due_date: string;
   next_action: string;
   priority: ProcessPriority;

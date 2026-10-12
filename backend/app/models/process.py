@@ -30,6 +30,7 @@ class Process(TimestampMixin, Base):
     client: Mapped[str] = mapped_column(String(300), nullable=False)
     number: Mapped[str] = mapped_column(String(120), default="", nullable=False)
     process_type: Mapped[str] = mapped_column("type", String(200), default="", nullable=False)
+    court: Mapped[str] = mapped_column(String(300), default="", server_default="", nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date, index=True)
     next_action: Mapped[str] = mapped_column(String(300), default="", nullable=False)
     priority: Mapped[ProcessPriority] = mapped_column(
@@ -41,7 +42,10 @@ class Process(TimestampMixin, Base):
     )
     status: Mapped[ProcessStatus] = mapped_column(
         Enum(
-            ProcessStatus, native_enum=False, values_callable=lambda enum: [e.value for e in enum]
+            ProcessStatus,
+            native_enum=False,
+            length=50,
+            values_callable=lambda enum: [e.value for e in enum],
         ),
         default=ProcessStatus.IN_PROGRESS,
         index=True,

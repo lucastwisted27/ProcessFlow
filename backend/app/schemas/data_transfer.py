@@ -83,6 +83,7 @@ class ProcessImport(BaseModel):
     client: str = Field(min_length=1, max_length=300)
     number: str = Field(default="", max_length=120)
     process_type: str = Field(default="", max_length=200)
+    court: str = Field(default="", max_length=300)
     due_date: date | None = None
     next_action: str = Field(default="", max_length=300)
     priority: ProcessPriority = ProcessPriority.NORMAL
@@ -103,6 +104,7 @@ class ProcessImport(BaseModel):
             "client": "cliente",
             "number": "numero",
             "process_type": "tipo",
+            "court": "juizado",
             "due_date": "data_prazo",
             "next_action": "proxima_acao",
             "priority": "prioridade",
@@ -119,6 +121,11 @@ class ProcessImport(BaseModel):
         # O status sempre vence o antigo booleano `concluido`, que podia ficar desatualizado.
         if "status" not in raw and raw.get("concluido") is True:
             raw["status"] = ProcessStatus.COMPLETED
+        raw["court"] = raw.get("court") or ""
+        if str(raw.get("status", "")).strip().casefold() in {"juizado", "small_claims_court"}:
+            if not str(raw["court"]).strip():
+                raw["court"] = "Juizado"
+            raw["status"] = ProcessStatus.IN_PROGRESS
         raw["due_date"] = _blank_to_none(raw.get("due_date"))
         raw["trello_id"] = _blank_to_none(raw.get("trello_id"))
         raw["trello_url"] = _blank_to_none(raw.get("trello_url"))
@@ -128,6 +135,7 @@ class ProcessImport(BaseModel):
         "client",
         "number",
         "process_type",
+        "court",
         "next_action",
         "notes",
         "origin",
@@ -306,6 +314,7 @@ class ProcessExport(BaseModel):
     client: str
     number: str
     process_type: str
+    court: str = ""
     due_date: date | None
     next_action: str
     priority: ProcessPriority

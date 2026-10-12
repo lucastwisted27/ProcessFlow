@@ -162,9 +162,7 @@ def _trello_processes(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
-def parse_import_payload(
-    raw: Any, *, source_type: ImportSourceType | None = None
-) -> ImportBundle:
+def parse_import_payload(raw: Any, *, source_type: ImportSourceType | None = None) -> ImportBundle:
     """Aceita backup v2, backup Electron v1, arrays legados e exportação bruta do Trello."""
 
     if isinstance(raw, list):
@@ -244,6 +242,9 @@ def process_import_key(item: ProcessImport) -> str:
     if item.trello_id:
         return f"trello:{item.trello_id}"
     content = item.model_dump(mode="json", exclude={"source_id"})
+    # Keep pre-court legacy fingerprints stable for otherwise unchanged imports.
+    if not item.court:
+        content.pop("court", None)
     return f"legacy:process:{item.legacy_id or 'none'}:{_fingerprint(content)}"
 
 
@@ -301,6 +302,7 @@ def _process_to_import(row: Process) -> ProcessImport:
         client=row.client,
         number=row.number,
         process_type=row.process_type,
+        court=row.court,
         due_date=row.due_date,
         next_action=row.next_action,
         priority=row.priority,
@@ -364,6 +366,7 @@ def _process_model(item: ProcessImport, workspace_id: UUID, import_key: str) -> 
         client=item.client,
         number=item.number,
         process_type=item.process_type,
+        court=item.court,
         due_date=item.due_date,
         next_action=item.next_action,
         priority=item.priority,
@@ -499,6 +502,7 @@ async def export_workspace_data(session: AsyncSession, workspace_id: UUID) -> Da
                 client=row.client,
                 number=row.number,
                 process_type=row.process_type,
+                court=row.court,
                 due_date=row.due_date,
                 next_action=row.next_action,
                 priority=row.priority,

@@ -27,6 +27,7 @@ const EMPTY_PROCESS: ProcessDraft = {
   client: "",
   number: "",
   process_type: "",
+  court: "",
   due_date: "",
   next_action: "",
   priority: "Normal",
@@ -41,7 +42,6 @@ const PROCESS_STATUSES: ProcessStatus[] = [
   "Aguardando Pagamento",
   "Aguardando Manifestação Contrária",
   "Ciência de Decisão",
-  "Juizado",
   "Concluído",
 ];
 
@@ -168,6 +168,7 @@ function NewProcessModal({ busy, onClose, onSave }: NewProcessModalProps) {
             <label>Próxima ação<input value={draft.next_action} onChange={(event) => field("next_action", event.target.value)} /></label>
             <label>Prioridade<select value={draft.priority} onChange={(event) => field("priority", event.target.value as ProcessPriority)}><option>Baixa</option><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
             <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}>{PROCESS_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+            <label>Juizado<input maxLength={300} placeholder="Ex.: 1º Juizado Especial Cível" value={draft.court} onChange={(event) => field("court", event.target.value)} /></label>
             <label className="full">Observações<textarea rows={4} value={draft.notes} onChange={(event) => field("notes", event.target.value)} /></label>
           </div>
           <footer className="modal-actions"><button type="button" className="ghost-btn" onClick={onClose}>Cancelar</button><button className="primary-btn" disabled={busy}>{busy ? "Salvando…" : "Salvar processo"}</button></footer>
@@ -192,6 +193,7 @@ function processDraft(process: ProcessRecord): ProcessDraft {
     client: process.client,
     number: process.number,
     process_type: process.process_type,
+    court: process.court ?? "",
     due_date: process.due_date ?? "",
     next_action: process.next_action,
     priority: process.priority,
@@ -254,6 +256,7 @@ function ProcessDetailModal({
               <label>Próxima ação<input value={draft.next_action} onChange={(event) => field("next_action", event.target.value)} /></label>
               <label>Prioridade<select value={draft.priority} onChange={(event) => field("priority", event.target.value as ProcessPriority)}><option>Baixa</option><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
               <label>Status<select value={draft.status} onChange={(event) => field("status", event.target.value as ProcessStatus)}>{PROCESS_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+              <label>Juizado<input maxLength={300} placeholder="Ex.: 1º Juizado Especial Cível" value={draft.court} onChange={(event) => field("court", event.target.value)} /></label>
               <label className="full">Observações<textarea rows={6} value={draft.notes} onChange={(event) => field("notes", event.target.value)} /></label>
             </div>
             <footer className="modal-actions">
@@ -271,6 +274,7 @@ function ProcessDetailModal({
                 <div><span>Próxima ação</span><strong>{process.next_action || "Não informada"}</strong></div>
                 <div><span>Prioridade</span><strong>{process.priority}</strong></div>
                 <div><span>Status</span><strong>{process.status}</strong></div>
+                <div><span>Juizado</span><strong>{process.court || "Não informado"}</strong></div>
                 <div><span>Origem</span><strong>{process.origin || "Manual"}</strong></div>
                 <div><span>Atualizado</span><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(process.updated_at))}</strong></div>
               </div>
